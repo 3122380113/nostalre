@@ -8,7 +8,8 @@ lookup implementations were changed during this review.
 
 | Content | Result |
 | --- | --- |
-| Game archives, executables, music, screenshots | None in the staged source export; local game data/config/builds remain ignored. |
+| Game archives, official client executables, music | None in the source export; local game data/config/builds remain ignored. |
+| README demonstration photo | User supplied on 2026-10-23; copied unchanged to docs/images/android-handheld.png for documentation. |
 | Seventeen compiled Lua fixtures | Table contents match the included authored Lua sources, using the client's parser with the required seed tables. |
 | Six generated text fixtures | Match make_fixtures.py output exactly, including synthetic TEST entries. |
 | Three Noto fonts | Byte-for-byte copies of upstream baseline b4ec4a4; embedded copyright statements transcribed into FONT-NOTICES.txt, alongside the existing OFL text. |
