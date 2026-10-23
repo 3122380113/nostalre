@@ -1,0 +1,779 @@
+//! Game controllers, after roBrowser's JoystickUI: left stick walks, right stick moves the cursor, A/B are the
+//! mouse buttons, X attacks the closest monster, Y picks up the closest item. L1, R1 or both held with a face
+//! button use a hotbar slot, in one of three sets (Select+L1/R1). The camera is ours (the design canvas,
+//! "Camera on controller and touch"): L2/R2 turn it, with Select held they tilt it, Select+Up/Down zooms, R3
+//! puts the starting view back. Start is Enter, Select+Start Escape, the D-pad alone the arrow keys. While the
+//! HUD's menu is open, A, B, X, Y, L1 and R1 are its keys (`menu_press`).
+//!
+//! Buttons arrive as key events carrying the Android keycode; sticks, the D-pad hat and the triggers as
+//! DeviceEvent::Motion (vendor/winit). Android only for now.
+
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
+
+use winit::application::ApplicationHandler;
+use winit::event::{DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent};
+use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{Key, KeyCode, NativeKey, PhysicalKey};
+use winit::window::WindowId;
+
+use crate::App;
+use nostalre_game::app_state::AppState;
+use nostalre_game::entity::EntityType;
+use nostalre_game::hotkey::{PAD_SET_SLOTS, PAD_SETS};
+use nostalre_renderer::camera::CameraControl;
+
+/// Stick values within this are rest (roBrowser joyDeadline).
+const DEADZONE: f32 = 0.1;
+/// Cursor speed at full tilt, logical pixels per second (roBrowser joySense 25).
+const CURSOR_SPEED: f32 = 250.0;
+/// Cells ahead the walk aims at full tilt; a partial tilt aims shorter.
+const WALK_REACH: f32 = 3.0;
+/// A walk request is repeated at least this often while the stick is held (the server walks one cell each
+/// `speed` ms, this is its fallback when the speed is unknown).
+const WALK_REPEAT_FALLBACK: Duration = Duration::from_millis(150);
+/// Search radius, in cells, for X (monsters) and Y (floor items).
+const REACH_CELLS: i32 = 20;
+/// The camera at full trigger: degrees turned or tilted a second; a light press goes slower (squared)
+const TURN_DEG_PER_SEC: f32 = 120.0;
+const TILT_DEG_PER_SEC: f32 = 30.0;
+/// Select+Up/Down held: wheel notches a second
+const ZOOM_NOTCHES_PER_SEC: f32 = 6.0;
+/// A trigger pressed less than this is at rest
+const TRIGGER_REST: f32 = 0.05;
+/// The camera readout stays this long after the camera stops moving, seconds
+const READOUT_LINGER: f32 = 1.0;
+
+/// Android axis ids (MotionEvent.AXIS_*), as vendor/winit reports them.
+mod axis {
+    pub const X: u32 = 0;
+    pub const Y: u32 = 1;
+    pub const Z: u32 = 11;
+    pub const RZ: u32 = 14;
+    pub const HAT_X: u32 = 15;
+    pub const HAT_Y: u32 = 16;
+    pub const LTRIGGER: u32 = 17;
+    pub const RTRIGGER: u32 = 18;
+    pub const GAS: u32 = 22;
+    pub const BRAKE: u32 = 23;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum Button {
+    A,
+    B,
+    X,
+    Y,
+    L1,
+    R1,
+    L2,
+    R2,
+    R3,
+    Start,
+    Select,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Button {
+    /// Android KeyEvent.KEYCODE_BUTTON_* / KEYCODE_DPAD_*.
+    fn from_android(code: u32) -> Option<Self> {
+        Some(match code {
+            96 => Self::A,
+            97 => Self::B,
+            99 => Self::X,
+            100 => Self::Y,
+            102 => Self::L1,
+            103 => Self::R1,
+            104 => Self::L2,
+            105 => Self::R2,
+            107 => Self::R3,
+            108 => Self::Start,
+            109 => Self::Select,
+            _ => return None,
+        })
+    }
+}
+
+/// The modifier held with a face button: which hotbar slots the face buttons reach.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Group {
+    L1,
+    R1,
+    L1R1,
+}
+
+/// A set's twelve slots, in the order of the HUD: L1's four, L1+R1's, R1's, each Y, X, B, A
+fn hotbar_slot(group: Group, face: Button, set: u8) -> Option<usize> {
+    let face = match face {
+        Button::Y => 0,
+        Button::X => 1,
+        Button::B => 2,
+        Button::A => 3,
+        _ => return None,
+    };
+    let group = match group {
+        Group::L1 => 0,
+        Group::L1R1 => 1,
+        Group::R1 => 2,
+    };
+    Some(PAD_SET_SLOTS * set as usize + 4 * group + face)
+}
+
+/// Octant 0..8 of a direction, for "walk again when the direction turns".
+fn octant(x: f32, y: f32) -> i32 {
+    ((y.atan2(x) / std::f32::consts::FRAC_PI_4).round() as i32) & 7
+}
+
+/// The cell the left stick aims at from `cell`: `stick` is the raw stick (y down), `yaw` the camera's.
+fn walk_target(cell: (u16, u16), stick: (f32, f32), yaw: f32) -> (i32, i32) {
+    // screen up is +y on the map at yaw 0; the camera's yaw turns the screen over the map
+    let (sx, sy) = (stick.0, -stick.1);
+    let (sin, cos) = yaw.sin_cos();
+    let dx = sx * cos - sy * sin;
+    let dy = sx * sin + sy * cos;
+    (
+        (cell.0 as f32 + dx * WALK_REACH).round() as i32,
+        (cell.1 as f32 + dy * WALK_REACH).round() as i32,
+    )
+}
+
+fn dead(v: f32) -> f32 {
+    if v.abs() <= DEADZONE { 0.0 } else { v }
+}
+
+#[derive(Default)]
+pub(crate) struct Gamepad {
+    held: HashSet<Button>,
+    /// Pressed since the last frame, in order.
+    fresh: Vec<Button>,
+    released: Vec<Button>,
+    axes: [f32; 24],
+    /// Hotbar set (Select+L1/R1): 0 to `PAD_SETS - 1`.
+    set: u8,
+    /// Seconds the camera readout still shows
+    readout: f32,
+    /// R3 was pressed: the starting view, next frame
+    reset: bool,
+    /// Last walk request: when, and the octant it went.
+    walk: Option<(Instant, i32)>,
+    last_frame: Option<Instant>,
+    /// The pad drives the cursor from here (logical px), seeded from the mouse position.
+    cursor: Option<(f32, f32)>,
+    /// Pressed while the menu was open: the menu's keys, so their release is not a click.
+    menu_presses: HashSet<Button>,
+}
+
+impl Gamepad {
+    /// A controller button: noted for the next frame. False for anything else (keyboards keep their keys).
+    pub(crate) fn key(&mut self, event: &KeyEvent) -> bool {
+        let button = match (&event.logical_key, event.physical_key) {
+            (Key::Unidentified(NativeKey::Android(code)), _) => Button::from_android(*code),
+            (_, PhysicalKey::Code(code)) => self.arrow(code, event.state),
+            _ => None,
+        };
+        let Some(button) = button else {
+            return false;
+        };
+        match event.state {
+            ElementState::Pressed if !event.repeat => self.press(button),
+            ElementState::Pressed => {}
+            ElementState::Released => self.release(button),
+        }
+        true
+    }
+
+    /// Controllers that send their D-pad as arrow keys: the pad's own with Select held (zoom), plain
+    /// arrow keys otherwise. A release is the pad's while its button is held, also when Select was let go first.
+    fn arrow(&self, code: KeyCode, state: ElementState) -> Option<Button> {
+        let button = match code {
+            KeyCode::ArrowUp => Button::Up,
+            KeyCode::ArrowDown => Button::Down,
+            KeyCode::ArrowLeft => Button::Left,
+            KeyCode::ArrowRight => Button::Right,
+            _ => return None,
+        };
+        let held = |b| self.held.contains(&b);
+        (held(Button::Select) || (state == ElementState::Released && held(button))).then_some(button)
+    }
+
+    pub(crate) fn axis(&mut self, id: u32, value: f64) {
+        let Some(slot) = self.axes.get_mut(id as usize) else {
+            return;
+        };
+        *slot = value as f32;
+        match id {
+            axis::HAT_X => {
+                self.set_held(Button::Left, value < -0.5);
+                self.set_held(Button::Right, value > 0.5);
+            }
+            axis::HAT_Y => {
+                self.set_held(Button::Up, value < -0.5);
+                self.set_held(Button::Down, value > 0.5);
+            }
+            // triggers that only report an axis still work as L2/R2
+            axis::LTRIGGER | axis::BRAKE => {
+                let v = self.axes[axis::LTRIGGER as usize].max(self.axes[axis::BRAKE as usize]);
+                self.set_held(Button::L2, v > 0.5);
+            }
+            axis::RTRIGGER | axis::GAS => {
+                let v = self.axes[axis::RTRIGGER as usize].max(self.axes[axis::GAS as usize]);
+                self.set_held(Button::R2, v > 0.5);
+            }
+            _ => {}
+        }
+    }
+
+    fn press(&mut self, button: Button) {
+        if self.held.insert(button) {
+            self.fresh.push(button);
+        }
+    }
+
+    fn release(&mut self, button: Button) {
+        if self.held.remove(&button) {
+            self.released.push(button);
+        }
+    }
+
+    fn set_held(&mut self, button: Button, down: bool) {
+        if down {
+            self.press(button)
+        } else {
+            self.release(button)
+        }
+    }
+
+    /// Select held this frame: still down, or let go since the last one (a quick Select+D-pad press can start
+    /// and end between two frames).
+    fn select_down(&self) -> bool {
+        self.held.contains(&Button::Select) || self.released.contains(&Button::Select)
+    }
+
+    fn stick(&self, x: u32, y: u32) -> (f32, f32) {
+        (dead(self.axes[x as usize]), dead(self.axes[y as usize]))
+    }
+
+    /// The group a face button is read in. A shoulder pressed in the same frame as the face button does
+    /// not count (roBrowser reads only held modifiers).
+    fn group(&self) -> Option<Group> {
+        let held = |b: Button| self.held.contains(&b) && !self.fresh.contains(&b);
+        match (held(Button::L1), held(Button::R1)) {
+            (true, true) => Some(Group::L1R1),
+            (true, false) => Some(Group::L1),
+            (false, true) => Some(Group::R1),
+            (false, false) => None,
+        }
+    }
+
+    /// How far a trigger is pressed, 0 to 1: its axis, or all the way for one that only sends a button
+    fn trigger(&self, button: Button) -> f32 {
+        let (a, b) = match button {
+            Button::L2 => (axis::LTRIGGER, axis::BRAKE),
+            _ => (axis::RTRIGGER, axis::GAS),
+        };
+        let analog = self.axes[a as usize].max(self.axes[b as usize]);
+        if analog > TRIGGER_REST {
+            analog.min(1.0)
+        } else if self.held.contains(&button) {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    /// R2 minus L2, a light press counting less (squared): -1 to 1
+    fn trigger_turn(&self) -> f32 {
+        let curve = |v: f32| v * v;
+        curve(self.trigger(Button::R2)) - curve(self.trigger(Button::L2))
+    }
+}
+
+impl App {
+    /// Once per frame, before the UI is built: what the pad did since the last one.
+    pub(crate) fn gamepad_frame(&mut self, event_loop: &ActiveEventLoop, window: WindowId) {
+        let now = Instant::now();
+        let dt = self
+            .gamepad
+            .last_frame
+            .map_or(0.0, |t| now.duration_since(t).as_secs_f32().min(0.1));
+        self.gamepad.last_frame = Some(now);
+
+        self.gamepad_cursor(event_loop, window, dt);
+        self.gamepad_walk(now);
+        self.gamepad_camera(dt);
+        self.touch_actions();
+
+        let select = self.gamepad.select_down();
+        let fresh = std::mem::take(&mut self.gamepad.fresh);
+        let released = std::mem::take(&mut self.gamepad.released);
+        let group = self.gamepad.group();
+        for &button in &fresh {
+            self.gamepad_press(event_loop, window, button, select, group);
+        }
+        for button in released {
+            if self.gamepad.menu_presses.remove(&button) {
+                continue;
+            }
+            match button {
+                Button::A => self.gamepad_click(
+                    event_loop,
+                    window,
+                    MouseButton::Left,
+                    ElementState::Released,
+                ),
+                Button::B => self.gamepad_click(
+                    event_loop,
+                    window,
+                    MouseButton::Right,
+                    ElementState::Released,
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    fn gamepad_press(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window: WindowId,
+        button: Button,
+        select: bool,
+        group: Option<Group>,
+    ) {
+        let in_game = self.game.session.app_state == AppState::InGame;
+        let playing = in_game && !self.windows.menu.is_open();
+        self.with_ui(|ui| ui.pad_labels = true);
+        if select {
+            match button {
+                Button::Start => self.with_ui(|ui| ui.key_escape = true),
+                Button::L1 if playing => {
+                    self.gamepad.set = (self.gamepad.set + PAD_SETS - 1) % PAD_SETS;
+                }
+                Button::R1 if playing => self.gamepad.set = (self.gamepad.set + 1) % PAD_SETS,
+                _ => {}
+            }
+            return;
+        }
+        if in_game && self.windows.menu.is_open() && self.menu_press(button) {
+            self.gamepad.menu_presses.insert(button);
+            return;
+        }
+        match button {
+            Button::Start => self.with_ui(|ui| ui.key_enter = true),
+            Button::Up => self.with_ui(|ui| ui.key_up = true),
+            Button::Down => self.with_ui(|ui| ui.key_down = true),
+            Button::Left => self.with_ui(|ui| ui.key_left = true),
+            Button::Right => self.with_ui(|ui| ui.key_right = true),
+            Button::A | Button::B | Button::X | Button::Y if group.is_some() => {
+                if let Some(slot) = group.and_then(|g| hotbar_slot(g, button, self.gamepad.set)) {
+                    self.use_hotbar_slot(slot);
+                }
+            }
+            Button::A => {
+                self.gamepad_click(event_loop, window, MouseButton::Left, ElementState::Pressed)
+            }
+            Button::B => self.gamepad_click(
+                event_loop,
+                window,
+                MouseButton::Right,
+                ElementState::Pressed,
+            ),
+            Button::X if in_game => self.attack_closest_monster(),
+            Button::Y if in_game => self.pick_up_closest_item(),
+            Button::R3 if in_game => self.gamepad.reset = true,
+            _ => {}
+        }
+    }
+
+    /// The menu's keys (`docs/nostalre-menu.md`): A opens, B goes back, L1 and R1 turn the tabs, Y takes
+    /// off or drops, X puts on the skill bar; false for a button the menu leaves alone
+    fn menu_press(&mut self, button: Button) -> bool {
+        match button {
+            Button::A => self.with_ui(|ui| ui.key_enter = true),
+            Button::B => self.with_ui(|ui| ui.key_escape = true),
+            Button::Y => self.with_ui(|ui| ui.key_delete = true),
+            Button::X => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::KeyS)),
+            Button::L1 => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::PageUp)),
+            Button::R1 => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::PageDown)),
+            _ => return false,
+        }
+        true
+    }
+
+    fn with_ui(&mut self, set: impl FnOnce(&mut nostalre_ui::context::UiContext)) {
+        if let Some(ui) = &mut self.ui_context {
+            set(ui);
+        }
+    }
+
+    /// The camera while buttons are held: L2/R2 or the touch turn buttons turn it (tilt with Select),
+    /// Select+Up/Down or the touch zoom buttons zoom. Not while the menu is open. The HUD's readout shows
+    /// while it moves and a moment after
+    fn gamepad_camera(&mut self, dt: f32) {
+        self.gamepad.readout = (self.gamepad.readout - dt).max(0.0);
+        let playing =
+            self.game.session.app_state == AppState::InGame && !self.windows.menu.is_open();
+        let touch = self.windows.hud.touch_input();
+        let pad = &self.gamepad;
+        let select = pad.select_down();
+        let turn = (pad.trigger_turn() + touch.turn).clamp(-1.0, 1.0);
+        let zoom = match (
+            pad.held.contains(&Button::Up),
+            pad.held.contains(&Button::Down),
+        ) {
+            (true, false) if select => 1.0,
+            (false, true) if select => -1.0,
+            _ => touch.zoom,
+        };
+        let reset = std::mem::take(&mut self.gamepad.reset) || touch.reset;
+        let moving = playing && (turn != 0.0 || zoom != 0.0 || reset);
+        if moving {
+            self.gamepad.readout = READOUT_LINGER;
+        }
+        let control = self.camera_control();
+        let Some(renderer) = &mut self.renderer else {
+            return;
+        };
+        let camera = &mut renderer.camera;
+        self.windows.hud.input.camera = (playing && self.gamepad.readout > 0.0).then(|| {
+            nostalre_ui_component::hud::CameraReadout {
+                turn_deg: camera.yaw.to_degrees().rem_euclid(360.0),
+                tilt_deg: camera.pitch.to_degrees(),
+                distance: camera.distance,
+            }
+        });
+        if !moving {
+            return;
+        }
+        if reset {
+            camera.reset_view(control);
+        }
+        // each only when asked: a call by 0 still pulls the view into its band (a Ctrl-lifted zoom)
+        if turn != 0.0 && select {
+            // the whole band, as kRO's Ctrl+Shift drag: 45° is below the band without it
+            let tilt = CameraControl {
+                ctrl: true,
+                ..control
+            };
+            camera.tilt_by(turn * TILT_DEG_PER_SEC * dt, tilt);
+        } else if turn != 0.0 {
+            camera.rotate_by(turn * TURN_DEG_PER_SEC * dt, control);
+        }
+        if zoom != 0.0 {
+            // no Ctrl here: it would lift the zoom's limits
+            camera.apply_wheel(zoom * ZOOM_NOTCHES_PER_SEC * dt, control);
+        }
+    }
+
+    /// The on-screen controls' taps: Attack as X, a slot button as its hotbar slot, the set button as
+    /// Select+R1. The stick walks in `gamepad_walk`, the camera buttons work in `gamepad_camera`
+    fn touch_actions(&mut self) {
+        self.windows.hud.input.touch_slots.set = self.gamepad.set;
+        if self.game.session.app_state != AppState::InGame {
+            // out of the game no control is drawn, and none keeps a finger or a press
+            self.windows.hud.hidden();
+            return;
+        }
+        if self.windows.menu.is_open() {
+            return;
+        }
+        let touch = self.windows.hud.touch_input();
+        if touch.attack {
+            self.attack_closest_monster();
+        }
+        if let Some(i) = touch.slot {
+            let slot = self.windows.hud.input.touch_slots.slot(i);
+            self.use_hotbar_slot(slot);
+        }
+        if touch.next_set {
+            self.gamepad.set = (self.gamepad.set + 1) % PAD_SETS;
+        }
+    }
+
+    /// Right stick: the cursor, as if the mouse moved (the UI and the world both see it).
+    fn gamepad_cursor(&mut self, event_loop: &ActiveEventLoop, window: WindowId, dt: f32) {
+        let (x, y) = self.gamepad.stick(axis::Z, axis::RZ);
+        if x == 0.0 && y == 0.0 {
+            self.gamepad.cursor = None;
+            return;
+        }
+        let dpi = self.renderer.as_ref().map_or(1.0, |r| r.dpi_scale);
+        let (w, h) = self
+            .window
+            .as_ref()
+            .map(|w| w.inner_size())
+            .map_or((1.0, 1.0), |s| {
+                (s.width as f32 / dpi, s.height as f32 / dpi)
+            });
+        let (cx, cy) = self.gamepad.cursor.unwrap_or((
+            self.input.mouse_position.0 as f32,
+            self.input.mouse_position.1 as f32,
+        ));
+        let next = (
+            (cx + x * CURSOR_SPEED * dt).clamp(0.0, w - 1.0),
+            (cy + y * CURSOR_SPEED * dt).clamp(0.0, h - 1.0),
+        );
+        self.gamepad.cursor = Some(next);
+        let position =
+            winit::dpi::PhysicalPosition::new((next.0 * dpi) as f64, (next.1 * dpi) as f64);
+        self.window_event(
+            event_loop,
+            window,
+            WindowEvent::CursorMoved {
+                device_id: pad(),
+                position,
+            },
+        );
+    }
+
+    fn gamepad_click(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window: WindowId,
+        button: MouseButton,
+        state: ElementState,
+    ) {
+        let event = WindowEvent::MouseInput {
+            device_id: pad(),
+            state,
+            button,
+        };
+        self.window_event(event_loop, window, event);
+    }
+
+    /// Left stick: walk toward where it points, relative to the camera. A request goes out when the direction
+    /// turns, else once per cell walked.
+    fn gamepad_walk(&mut self, now: Instant) {
+        let (mut x, mut y) = self.gamepad.stick(axis::X, axis::Y);
+        if x == 0.0 && y == 0.0 {
+            (x, y) = self.windows.hud.touch_input().stick;
+            (x, y) = (dead(x), dead(y));
+        }
+        if (x == 0.0 && y == 0.0) || self.game.session.app_state != AppState::InGame {
+            self.gamepad.walk = None;
+            return;
+        }
+        let Some(player) = self.game.world.entities.player() else {
+            return;
+        };
+        let cell = player.movement.cell_position();
+        let repeat = match player.speed {
+            0 => WALK_REPEAT_FALLBACK,
+            ms => Duration::from_millis(ms as u64),
+        };
+        let yaw = self.renderer.as_ref().map_or(0.0, |r| r.camera.yaw);
+        let (tx, ty) = walk_target(cell, (x, y), yaw);
+        let turn = octant(x, -y);
+        let due = self
+            .gamepad
+            .walk
+            .is_none_or(|(at, last)| last != turn || now.duration_since(at) >= repeat);
+        if !due {
+            return;
+        }
+        self.gamepad.walk = Some((now, turn));
+        self.stop_attacking();
+        self.walk_to(tx, ty);
+    }
+
+    /// A walk request toward `(x, y)`, cut to where the path from the player can go.
+    fn walk_to(&mut self, x: i32, y: i32) {
+        let Some(gat) = &self.game.session.gat else {
+            return;
+        };
+        let Some((sx, sy)) = self
+            .game
+            .world
+            .entities
+            .player()
+            .map(|e| e.movement.cell_position())
+        else {
+            return;
+        };
+        if let Some(step) = nostalre_game::path::try_move_to(gat, sx, sy, x, y) {
+            self.channel
+                .send_packet(nostalre_network::build_request_move_packet(
+                    step.dest_x,
+                    step.dest_y,
+                    self.active_packetver,
+                ));
+        }
+    }
+
+    fn attack_closest_monster(&mut self) {
+        let Some(player) = self.game.world.entities.player() else {
+            return;
+        };
+        let (px, py) = player.movement.cell_position();
+        let closest = self
+            .game
+            .world
+            .entities
+            .iter()
+            .filter(|e| e.entity_type == EntityType::Monster && !e.is_pet && e.is_alive())
+            .map(|e| (e.id, cell_distance((px, py), e.movement.cell_position())))
+            .filter(|&(_, d)| d <= REACH_CELLS)
+            .min_by_key(|&(_, d)| d)
+            .map(|(id, _)| id);
+        if let Some(id) = closest {
+            self.initiate_attack(id);
+        }
+    }
+
+    fn pick_up_closest_item(&mut self) {
+        let Some(player) = self.game.world.entities.player() else {
+            return;
+        };
+        let (px, py) = player.movement.cell_position();
+        let closest = self
+            .game
+            .world
+            .floor_items
+            .values()
+            .map(|item| {
+                (
+                    item.id,
+                    cell_distance((px, py), (item.x as u16, item.y as u16)),
+                )
+            })
+            .filter(|&(_, d)| d <= REACH_CELLS)
+            .min_by_key(|&(_, d)| d)
+            .map(|(id, _)| id);
+        if let Some(id) = closest {
+            self.game.combat.attack_target_id = None;
+            self.game.pending_casts.pending_pickup_item_id = Some(id);
+            self.check_pending_pickup();
+        }
+    }
+
+    fn use_hotbar_slot(&mut self, slot: usize) {
+        let mut events = Vec::new();
+        self.windows.hotkey_bar.execute_slot(
+            slot,
+            &self.game.character,
+            self.game.data_table.skill_use_level.as_ref(),
+            &mut events,
+        );
+        self.pending_events.extend(events);
+    }
+}
+
+/// Chebyshev distance in cells, how RO measures range.
+fn cell_distance(a: (u16, u16), b: (u16, u16)) -> i32 {
+    (a.0 as i32 - b.0 as i32)
+        .abs()
+        .max((a.1 as i32 - b.1 as i32).abs())
+}
+
+/// The device the pad's mouse events claim to come from.
+fn pad() -> DeviceId {
+    DeviceId::dummy()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn three_sets_of_twelve_cover_the_four_rows() {
+        assert_eq!(hotbar_slot(Group::L1, Button::Y, 0), Some(0));
+        assert_eq!(hotbar_slot(Group::L1R1, Button::Y, 0), Some(4));
+        assert_eq!(hotbar_slot(Group::R1, Button::A, 0), Some(11));
+        assert_eq!(hotbar_slot(Group::L1, Button::X, 1), Some(13));
+        assert_eq!(hotbar_slot(Group::R1, Button::A, 2), Some(35));
+        assert_eq!(hotbar_slot(Group::L1, Button::Start, 0), None);
+    }
+
+    #[test]
+    fn triggers_are_no_hotbar_group() {
+        let mut pad = Gamepad::default();
+        pad.press(Button::L2);
+        pad.fresh.clear();
+        assert_eq!(pad.group(), None);
+    }
+
+    #[test]
+    fn a_trigger_turns_by_how_far_it_is_pressed() {
+        let mut pad = Gamepad::default();
+        assert_eq!(pad.trigger_turn(), 0.0);
+        pad.axis(axis::RTRIGGER, 0.5);
+        assert!((pad.trigger_turn() - 0.25).abs() < 1e-6);
+        pad.axis(axis::LTRIGGER, 1.0);
+        assert!((pad.trigger_turn() + 0.75).abs() < 1e-6);
+        // a trigger that only sends a button is all the way in
+        let mut digital = Gamepad::default();
+        digital.press(Button::L2);
+        assert_eq!(digital.trigger_turn(), -1.0);
+    }
+
+    #[test]
+    fn a_shoulder_pressed_with_the_face_button_is_no_modifier() {
+        let mut pad = Gamepad::default();
+        pad.press(Button::L1);
+        assert_eq!(pad.group(), None);
+        pad.fresh.clear();
+        assert_eq!(pad.group(), Some(Group::L1));
+        pad.press(Button::R1);
+        pad.fresh.clear();
+        assert_eq!(pad.group(), Some(Group::L1R1));
+    }
+
+    #[test]
+    fn an_arrow_released_after_select_still_releases() {
+        let mut pad = Gamepad::default();
+        assert_eq!(pad.arrow(KeyCode::ArrowUp, ElementState::Pressed), None);
+        pad.press(Button::Select);
+        let up = pad.arrow(KeyCode::ArrowUp, ElementState::Pressed);
+        assert_eq!(up, Some(Button::Up));
+        pad.press(Button::Up);
+        pad.release(Button::Select);
+        assert_eq!(pad.arrow(KeyCode::ArrowUp, ElementState::Released), Some(Button::Up));
+        pad.release(Button::Up);
+        assert_eq!(pad.arrow(KeyCode::ArrowUp, ElementState::Released), None);
+    }
+
+    #[test]
+    fn select_let_go_within_the_frame_still_counts() {
+        let mut pad = Gamepad::default();
+        assert!(!pad.select_down());
+        pad.press(Button::Select);
+        pad.press(Button::Down);
+        pad.release(Button::Select);
+        pad.release(Button::Down);
+        assert!(pad.select_down());
+    }
+
+    #[test]
+    fn the_hat_is_the_dpad() {
+        let mut pad = Gamepad::default();
+        pad.axis(axis::HAT_X, -1.0);
+        assert_eq!(pad.fresh, [Button::Left]);
+        pad.axis(axis::HAT_X, 0.0);
+        assert_eq!(pad.released, [Button::Left]);
+    }
+
+    #[test]
+    fn analog_triggers_are_l2_r2() {
+        let mut pad = Gamepad::default();
+        pad.axis(axis::GAS, 0.9);
+        assert!(pad.held.contains(&Button::R2));
+        pad.axis(axis::GAS, 0.1);
+        assert!(!pad.held.contains(&Button::R2));
+    }
+
+    #[test]
+    fn walk_aims_up_the_screen_at_full_tilt() {
+        assert_eq!(walk_target((100, 100), (0.0, -1.0), 0.0), (100, 103));
+        assert_eq!(walk_target((100, 100), (1.0, 0.0), 0.0), (103, 100));
+        assert_eq!(walk_target((100, 100), (0.0, -0.5), 0.0), (100, 102));
+    }
+
+    #[test]
+    fn deadzone_is_rest() {
+        assert_eq!(dead(0.05), 0.0);
+        assert_eq!(dead(-0.3), -0.3);
+    }
+}
