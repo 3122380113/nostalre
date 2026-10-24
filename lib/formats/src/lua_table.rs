@@ -586,6 +586,39 @@ pub fn parse_sign_board_list(chunk: &[u8]) -> Result<Vec<SignBoardRow>, LubError
     Ok(rows)
 }
 
+/// SP per level, by skill name, of the skills whose level the player picks (`bSeperateLv`) in kRO's
+/// `SKILL_INFO_LIST` (`skillinfolist.lub`). Its keys index `SKID` and its prerequisites `JOBID`, so the chunks
+/// defining those (`skillid.lub`, `jobinheritlist.lub`) come first, in the order given.
+pub fn parse_skill_info_sp_amounts(
+    chunks: &[&[u8]],
+) -> Result<HashMap<String, Vec<i16>>, LubError> {
+    let mut state = LuaState::new();
+    for chunk in chunks {
+        lub::load_chunk(chunk, &mut state)?;
+    }
+    let list = state
+        .global_table("SKILL_INFO_LIST")
+        .ok_or(LubError::MissingTable("SKILL_INFO_LIST"))?;
+    let index = |n: usize| Key::Number((n as f64).to_bits());
+    let field = |name: &str| Key::Str(Rc::from(name.as_bytes()));
+    let mut skills = HashMap::new();
+    for entry in list.values().filter_map(|v| state.table(v)) {
+        if !matches!(entry.get(&field("bSeperateLv")), Some(Value::Bool(true))) {
+            continue;
+        }
+        let Some(name) = entry.get(&index(1)).and_then(Value::as_bytes) else {
+            continue;
+        };
+        let amounts = entry.get(&field("SpAmount")).and_then(|v| state.table(v));
+        let sp = (1..)
+            .map_while(|level| amounts?.get(&index(level))?.as_number())
+            .map(|sp| sp as i16)
+            .collect();
+        skills.insert(decode_euc_kr(name), sp);
+    }
+    Ok(skills)
+}
+
 fn to_id(number: f64) -> Option<u16> {
     (number >= 0.0 && number <= u16::MAX as f64).then_some(number as u16)
 }

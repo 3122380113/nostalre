@@ -399,6 +399,10 @@ lib/formats/tests/fixtures/robe_names.lua	modified or added since baseline	keep	
 lib/formats/tests/fixtures/robe_names_lua51.lub	modified or added since baseline	keep	All 17 bytecode fixtures match authored-source table contents; six generated text fixtures match make_fixtures.py.
 lib/formats/tests/fixtures/signboardlist.lua	modified or added since baseline	keep	All 17 bytecode fixtures match authored-source table contents; six generated text fixtures match make_fixtures.py.
 lib/formats/tests/fixtures/signboardlist_lua51.lub	modified or added since baseline	keep	All 17 bytecode fixtures match authored-source table contents; six generated text fixtures match make_fixtures.py.
+lib/formats/tests/fixtures/skillid_lua51.lua	modified or added since baseline	keep	Authored fixture source (our own ids).
+lib/formats/tests/fixtures/skillid_lua51.lub	modified or added since baseline	keep	Compiled from skillid_lua51.lua with 32-bit luac 5.1.5.
+lib/formats/tests/fixtures/skillinfolist_lua51.lua	modified or added since baseline	keep	Authored fixture source (our own values).
+lib/formats/tests/fixtures/skillinfolist_lua51.lub	modified or added since baseline	keep	Compiled from skillinfolist_lua51.lua with 32-bit luac 5.1.5.
 lib/formats/tests/fixtures/weapontable_lua51.lua	modified or added since baseline	keep	All 17 bytecode fixtures match authored-source table contents; six generated text fixtures match make_fixtures.py.
 lib/formats/tests/fixtures/weapontable_lua51.lub	modified or added since baseline	keep	All 17 bytecode fixtures match authored-source table contents; six generated text fixtures match make_fixtures.py.
 lib/formats/tests/gr2_integration.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.

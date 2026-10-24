@@ -19,14 +19,23 @@ impl SkillUseLevelTable {
         }
     }
 
+    /// The text table when there is one (`import-english.py` writes it with rAthena's own costs; kRO's 2023 data
+    /// has one too), else kRO's `SKILL_INFO_LIST`: kRO's 2025 data has no text table.
     pub fn load(grf: &GrfArchive) -> Self {
-        let sp_per_level = grf
+        let text = grf
             .read_file(PATH)
-            .map(|data| lua_table::parse_level_use_skill_sp_table(&data))
-            .unwrap_or_default();
+            .ok()
+            .map(|data| lua_table::parse_level_use_skill_sp_table(&data));
+        let (source, sp_per_level) = match text {
+            Some(table) => (PATH, table),
+            None => (
+                nostalre_resources::lua::SKILL_INFO_LIST_514_LUB,
+                load_skill_info_list(grf).unwrap_or_default(),
+            ),
+        };
 
         tracing::info!(
-            "Loaded skill use level table: {} entries",
+            "Loaded skill use level table: {} entries from {source}",
             sp_per_level.len()
         );
         Self {
@@ -52,6 +61,20 @@ impl SkillUseLevelTable {
             .and_then(|v| v.get((level - 1).max(0) as usize))
             .copied()
     }
+}
+
+/// None when a chunk is missing or unreadable (a translation's plain-text `.lub` too)
+fn load_skill_info_list(grf: &GrfArchive) -> Option<HashMap<String, Vec<i16>>> {
+    let chunks = [
+        nostalre_resources::lua::SKILL_ID_514_LUB,
+        nostalre_resources::lua::JOB_INHERIT_LIST_514_LUB,
+        nostalre_resources::lua::SKILL_INFO_LIST_514_LUB,
+    ]
+    .map(|path| grf.read_file(path).ok());
+    let chunks: Vec<&[u8]> = chunks.iter().map(|c| c.as_deref()).collect::<Option<_>>()?;
+    lua_table::parse_skill_info_sp_amounts(&chunks)
+        .inspect_err(|error| tracing::warn!("skillinfolist.lub unreadable: {error}"))
+        .ok()
 }
 
 #[cfg(test)]

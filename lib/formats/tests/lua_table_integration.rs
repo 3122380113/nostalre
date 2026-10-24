@@ -188,3 +188,24 @@ fn sign_board_rows_come_in_order_with_their_holes() {
         (15, 3, Some("시험 간판"))
     );
 }
+
+#[test]
+fn skill_info_list_gives_sp_per_level_of_the_skills_with_a_level_picker() {
+    let ids = include_bytes!("fixtures/skillid_lua51.lub").as_slice();
+    let list = include_bytes!("fixtures/skillinfolist_lua51.lub").as_slice();
+
+    let skills = lua_table::parse_skill_info_sp_amounts(&[ids, list]).expect("skill chunks");
+
+    assert_eq!(skills.len(), 3);
+    assert_eq!(skills["SM_BASH"], vec![7, 7, 7, 12, 12]);
+    assert_eq!(skills["AL_HEAL"], vec![10, 15, 20]);
+    assert_eq!(skills["AL_TELEPORT"], Vec::<i16>::new());
+    assert!(!skills.contains_key("SM_SWORD"));
+}
+
+#[test]
+fn skill_info_list_needs_the_ids_it_indexes() {
+    let list = include_bytes!("fixtures/skillinfolist_lua51.lub").as_slice();
+
+    assert!(lua_table::parse_skill_info_sp_amounts(&[list]).is_err());
+}
