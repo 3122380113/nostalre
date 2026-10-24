@@ -351,6 +351,26 @@ pub fn badge(ui: &mut UiFrame, x: f32, y: f32, size: f32, label: &str) {
     text(ui, (x + (size - w) / 2.0).floor(), baseline, label, ACCENT);
 }
 
+/// A badge's ring and fill, stretched to a pill: a button
+pub fn pill_button(ui: &mut UiFrame, r: Rect) {
+    let radius = r.h * 0.5;
+    push_white(
+        ui,
+        draw::rounded_rect(r.x, r.y, r.w, r.h, radius, BADGE_RING),
+    );
+    push_white(
+        ui,
+        draw::rounded_rect(
+            r.x + 1.0,
+            r.y + 1.0,
+            r.w - 2.0,
+            r.h - 2.0,
+            radius - 1.0,
+            SLOT_BG,
+        ),
+    );
+}
+
 pub fn text_right(ui: &mut UiFrame, right: f32, baseline: f32, content: &str, color: [f32; 4]) {
     let w = measure(ui, content);
     text(ui, right - w, baseline, content, color);

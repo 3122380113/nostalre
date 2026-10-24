@@ -1,5 +1,6 @@
 //! Game controllers, after roBrowser's JoystickUI: left stick walks, right stick moves the cursor, A/B are the
-//! mouse buttons, X attacks the closest monster, Y picks up the closest item. L1, R1 or both held with a face
+//! mouse buttons, X attacks the closest monster, Y picks up the closest item or else talks to the nearest NPC (in
+//! a dialog A goes on and B cancels; in a shop A moves a line across, Start buys). L1, R1 or both held with a face
 //! button use a hotbar slot, in one of three sets (Select+L1/R1). The camera is ours (the design canvas,
 //! "Camera on controller and touch"): L2/R2 turn it, with Select held they tilt it, Select+Up/Down zooms, R3
 //! puts the starting view back. Start is Enter, Select+Start Escape, the D-pad alone the arrow keys. While the
@@ -20,13 +21,15 @@ use winit::window::WindowId;
 use crate::App;
 use nostalre_game::app_state::AppState;
 use nostalre_game::entity::EntityType;
+use nostalre_game::entity_collection::TALK_RANGE;
 use nostalre_game::hotkey::{PAD_SET_SLOTS, PAD_SETS};
 use nostalre_renderer::camera::CameraControl;
 
 /// Stick values within this are rest (roBrowser joyDeadline).
 const DEADZONE: f32 = 0.1;
-/// Cursor speed at full tilt, logical pixels per second (roBrowser joySense 25).
-const CURSOR_SPEED: f32 = 250.0;
+/// Cursor speed at full tilt, logical pixels per second: four times roBrowser's (joySense 25), for a handheld's
+/// screen at 150%
+const CURSOR_SPEED: f32 = 1000.0;
 /// Cells ahead the walk aims at full tilt; a partial tilt aims shorter.
 const WALK_REACH: f32 = 3.0;
 /// A walk request is repeated at least this often while the stick is held (the server walks one cell each
@@ -361,6 +364,22 @@ impl App {
             self.gamepad.menu_presses.insert(button);
             return;
         }
+        if in_game
+            && group.is_none()
+            && self.windows.npc_shop.shop.is_open()
+            && self.shop_press(button)
+        {
+            self.gamepad.menu_presses.insert(button);
+            return;
+        }
+        if in_game
+            && group.is_none()
+            && self.windows.npc_dialog.dialog.is_open()
+            && self.dialog_press(button)
+        {
+            self.gamepad.menu_presses.insert(button);
+            return;
+        }
         match button {
             Button::Start => self.with_ui(|ui| ui.key_enter = true),
             Button::Up => self.with_ui(|ui| ui.key_up = true),
@@ -382,7 +401,11 @@ impl App {
                 ElementState::Pressed,
             ),
             Button::X if in_game => self.attack_closest_monster(),
-            Button::Y if in_game => self.pick_up_closest_item(),
+            Button::Y if in_game => {
+                if !self.pick_up_closest_item() {
+                    self.talk_to_nearest_npc();
+                }
+            }
             Button::R3 if in_game => self.gamepad.reset = true,
             _ => {}
         }
@@ -398,6 +421,32 @@ impl App {
             Button::X => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::KeyS)),
             Button::L1 => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::PageUp)),
             Button::R1 => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::PageDown)),
+            _ => return false,
+        }
+        true
+    }
+
+    /// An NPC's dialog: A goes on (next, close, the chosen line), B cancels, the D-pad picks a line (arrow
+    /// keys); X and Y wait, so a press meant for the dialog attacks or talks to no one
+    fn dialog_press(&mut self, button: Button) -> bool {
+        match button {
+            Button::A => self.with_ui(|ui| ui.key_enter = true),
+            Button::B => self.with_ui(|ui| ui.key_escape = true),
+            Button::X | Button::Y => {}
+            _ => return false,
+        }
+        true
+    }
+
+    /// A shop (buy, sell, a market, a barter): the D-pad (arrow keys) walks the list, the basket and, down off
+    /// the basket, its Buy and Cancel; A moves the picked line across, presses the button or answers the amount
+    /// (where Left/Right step it by ten), B closes the amount or the shop, Start buys or sells; X and Y wait
+    fn shop_press(&mut self, button: Button) -> bool {
+        match button {
+            Button::A => self.with_ui(|ui| ui.key_enter = true),
+            Button::B => self.with_ui(|ui| ui.key_escape = true),
+            Button::Start => self.with_ui(|ui| ui.pressed_codes.push(KeyCode::Space)),
+            Button::X | Button::Y => {}
             _ => return false,
         }
         true
@@ -480,9 +529,19 @@ impl App {
         if self.windows.menu.is_open() {
             return;
         }
+        // Talk shows the NPC it would talk to; none while a dialog or a shop is up
+        let talk = (!self.windows.npc_dialog.dialog.is_open()
+            && !self.windows.npc_shop.shop.is_open())
+        .then(|| self.talkable_npc())
+        .flatten()
+        .map(|(_, name)| name.unwrap_or_default().to_string());
+        self.windows.hud.input.touch_slots.talk = talk;
         let touch = self.windows.hud.touch_input();
         if touch.attack {
             self.attack_closest_monster();
+        }
+        if touch.talk {
+            self.talk_to_nearest_npc();
         }
         if let Some(i) = touch.slot {
             let slot = self.windows.hud.input.touch_slots.slot(i);
@@ -512,9 +571,12 @@ impl App {
             self.input.mouse_position.0 as f32,
             self.input.mouse_position.1 as f32,
         ));
+        // speed by the tilt squared: a light push stays fine enough for a small button, a full one crosses
+        // the screen in about a second
+        let gain = CURSOR_SPEED * (x * x + y * y).sqrt().min(1.0) * dt;
         let next = (
-            (cx + x * CURSOR_SPEED * dt).clamp(0.0, w - 1.0),
-            (cy + y * CURSOR_SPEED * dt).clamp(0.0, h - 1.0),
+            (cx + x * gain).clamp(0.0, w - 1.0),
+            (cy + y * gain).clamp(0.0, h - 1.0),
         );
         self.gamepad.cursor = Some(next);
         let position =
@@ -623,9 +685,10 @@ impl App {
         }
     }
 
-    fn pick_up_closest_item(&mut self) {
+    /// False when no item lies within reach
+    fn pick_up_closest_item(&mut self) -> bool {
         let Some(player) = self.game.world.entities.player() else {
-            return;
+            return false;
         };
         let (px, py) = player.movement.cell_position();
         let closest = self
@@ -642,11 +705,36 @@ impl App {
             .filter(|&(_, d)| d <= REACH_CELLS)
             .min_by_key(|&(_, d)| d)
             .map(|(id, _)| id);
-        if let Some(id) = closest {
-            self.game.combat.attack_target_id = None;
-            self.game.pending_casts.pending_pickup_item_id = Some(id);
-            self.check_pending_pickup();
-        }
+        let Some(id) = closest else {
+            return false;
+        };
+        self.game.combat.attack_target_id = None;
+        self.game.pending_casts.pending_pickup_item_id = Some(id);
+        self.check_pending_pickup();
+        true
+    }
+
+    /// The NPC the player can talk to now (`nearest_talkable_npc`): its id and name
+    pub(crate) fn talkable_npc(&self) -> Option<(u32, Option<&str>)> {
+        let entities = &self.game.world.entities;
+        let from = entities.player()?.movement.cell_position();
+        entities
+            .nearest_talkable_npc(from, TALK_RANGE)
+            .map(|npc| (npc.id, npc.name.as_deref()))
+    }
+
+    /// Talks to the nearest NPC in reach, as a click on it does; false when none is
+    pub(crate) fn talk_to_nearest_npc(&mut self) -> bool {
+        let Some((id, _)) = self.talkable_npc() else {
+            return false;
+        };
+        self.stop_attacking();
+        self.channel
+            .send_packet(nostalre_network::sender::build_contact_npc_packet(
+                id,
+                self.active_packetver,
+            ));
+        true
     }
 
     fn use_hotbar_slot(&mut self, slot: usize) {

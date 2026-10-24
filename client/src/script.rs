@@ -13,7 +13,7 @@
 //! turn DEGREES        camera rotation
 //! equip ITEM_ID       wear the first such item in the inventory where it goes
 //! attack              attack the nearest monster, repeatedly, as a click on it does
-//! talk                talk to the nearest NPC, as a click on it does
+//! talk                talk to the nearest NPC in reach, as a click on it does
 //! hotkey ACTION       the window a hotkey opens, by its action name (`ToggleStatus`, `ToggleBasicInfo`...), as
 //!                     the classic layout opens it whatever the HUD
 //! menu ACTION         the hotkey as the player presses it: with the frameless HUD, the menu's screen for it
@@ -596,16 +596,12 @@ impl App {
                 Some(gid) => self.initiate_attack(gid),
                 None => tracing::warn!("script: no monster to attack"),
             },
-            Step::Talk => match self.nearest_entity(EntityCategory::Npc) {
-                Some(npc_id) => {
-                    self.channel
-                        .send_packet(nostalre_network::sender::build_contact_npc_packet(
-                            npc_id,
-                            self.active_packetver,
-                        ))
+            // the controller's and the touch Talk's pick: in reach, no warp portal
+            Step::Talk => {
+                if !self.talk_to_nearest_npc() {
+                    tracing::warn!("script: no NPC to talk to");
                 }
-                None => tracing::warn!("script: no NPC to talk to"),
-            },
+            }
             // the window itself, as the classic layout opens it, so steps clicking into it work with either HUD
             Step::Hotkey(action) => self.run_action(action),
             Step::Menu(action) => self.dispatch_action(action),

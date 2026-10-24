@@ -124,6 +124,9 @@ pub mod lua {
         ROBE_ID_514_LUB = "data/luafiles514/lua files/datainfo/spriterobeid.lub";
         ROBE_NAME_514_LUB = "data/luafiles514/lua files/datainfo/spriterobename.lub";
         JOB_INHERIT_LIST_514_LUB = "data/luafiles514/lua files/skillinfoz/jobinheritlist.lub";
+        // skills: SP per level and which levels the player picks (`SKILL_INFO_LIST`, its keys from `SKID`)
+        SKILL_ID_514_LUB = "data/luafiles514/lua files/skillinfoz/skillid.lub";
+        SKILL_INFO_LIST_514_LUB = "data/luafiles514/lua files/skillinfoz/skillinfolist.lub";
         ROBE_LAYER_JOBS_514_LUB = "data/luafiles514/lua files/spreditinfo/_new_2dlayerdir_f.lub";
         ROBE_LAYERS_FEMALE_514_LUB = "data/luafiles514/lua files/spreditinfo/_new_biglayerdir_female.lub";
         ROBE_LAYERS_MALE_514_LUB = "data/luafiles514/lua files/spreditinfo/_new_biglayerdir_male.lub";

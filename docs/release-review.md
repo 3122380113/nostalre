@@ -73,8 +73,10 @@ The export is pushed to the private repository si-klyde/nostalre, with a v0.1.0
 debug-signed test APK published as a pre-release. Before making the repository
 public:
 
-- The APK bundles the local servers from the integration project, including
-  rAthena (GPL-3.0). Publish their corresponding source, including local changes
-  on top of d4b8e7b, and link it from the release; or withdraw the APK.
+- APK source: the rAthena servers' source, with local changes on top of
+  d4b8e7b, is published at si-klyde/rathena-nostalre (tag nostalre-v0.1.0,
+  2026-10-24). Still unpublished: the bundled roBrowser web client
+  (client.zip, GPL-3.0) and the ws-proxy/grf-server bridge. The APK also does
+  not yet include the GPL license text or a source link for these parts.
 - Resolve the AzzyAI permission question above. companion_ai.json carries
   AzzyAI-style settings inherited from upstream and should be checked with it.

@@ -220,6 +220,10 @@ including the APK, are distributed under GPL-3.0-or-later as a whole. The
 Apache-2.0, MIT, and OFL parts remain available under their own terms in source form.
 [NOTICE](NOTICE) lists attribution and modification details.
 
+The APK's login, char, and map servers are built from
+[si-klyde/rathena-nostalre](https://github.com/si-klyde/rathena-nostalre), a GPL-3.0
+fork of rAthena; tag `nostalre-v0.1.0` matches the v0.1.0 APK.
+
 ## AI use disclosure
 
 AI tools assist with implementation, debugging, protocol and rendering work,

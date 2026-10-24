@@ -71,6 +71,8 @@ pub struct InputDialog {
     escape_cancels: bool,
     label: Option<String>,
     max_value: Option<i32>,
+    /// A number: the keys step it ([`InputDialog::step`])
+    numeric: bool,
     base_id: WidgetId,
     container: DialogContainer,
 }
@@ -99,6 +101,7 @@ impl InputDialog {
             escape_cancels: config.escape_cancels,
             label,
             max_value: config.max_value,
+            numeric: config.numeric_only,
             base_id,
             container: DialogContainer::new(),
         }
@@ -150,6 +153,22 @@ impl InputDialog {
     }
     fn cancel_id(&self) -> WidgetId {
         WidgetId(self.base_id.0 + OFFSET_CANCEL)
+    }
+
+    /// A number steps with the keys, a controller's D-pad: Up/Down by one, and Left/Right by ten while a
+    /// controller is in use (from the keyboard they move the caret); never under 0 or over the most
+    fn step(&mut self, ui: &UiFrame) {
+        let c = &ui.ctx;
+        let mut step = i32::from(c.key_up) - i32::from(c.key_down);
+        if c.pad_labels {
+            step += 10 * (i32::from(c.key_right) - i32::from(c.key_left));
+        }
+        if !self.numeric || step == 0 {
+            return;
+        }
+        let value = self.value_i32().unwrap_or(0).saturating_add(step).max(0);
+        let value = self.max_value.map_or(value, |max| value.min(max));
+        self.set_input_text(&value.to_string());
     }
 
     fn clamp_to_max(&mut self) {
@@ -260,6 +279,7 @@ impl InputDialog {
             ui.set_focus(input_id);
         }
 
+        self.step(ui);
         ui.text_input(input_id, input_rect, &mut self.input, input_bg);
         let ok = ui.button(ok_id, ok_rect, &OK_BTN, "OK");
 
