@@ -10,6 +10,8 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
+  # Full debug info for every target fills the runner disk.
+  CARGO_PROFILE_DEV_DEBUG: 0
 
 concurrency:
   group: ci-${{ github.ref }}

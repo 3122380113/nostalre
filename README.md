@@ -16,7 +16,7 @@ client and local servers together for offline play.
 
 ![nostalRE gameplay on an Android handheld](docs/images/android-handheld.webp)
 
-*User-provided photo of nostalRE running on an Android handheld. Game resources are supplied separately.*
+*A mobile-first client. User-provided photo; game resources are supplied separately.*
 
 ## Play on Android
 
