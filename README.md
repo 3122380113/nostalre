@@ -195,7 +195,7 @@ Renewal protocol support, rendering, interface, input, and platform integration.
 
 See [LICENSE.md](LICENSE.md), [NOTICE](NOTICE), and [LICENSES](LICENSES) for
 license texts and component details. The [bundled-content review](docs/third-party-content.md)
-records the remaining permission question for inherited tactic defaults.
+records how the inherited AzzyAI tactic defaults are kept and credited.
 
 The repository also includes original charm artwork, OFL fonts, authored parser
 fixtures, vendored examples/test data, and the user-provided README photo.

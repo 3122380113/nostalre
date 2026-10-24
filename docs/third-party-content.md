@@ -35,9 +35,7 @@ record in compiled chunks is byte-identical to a newly compiled file.
 - rAthena-derived output: source credit, version evidence, and full GPLv3 text;
   distributed under GPL-3.0-or-later (below).
 
-## Open question
-
-### AzzyAI-derived tactic defaults
+## Decided: AzzyAI-derived tactic defaults
 
 `lib/ai/src/tactics.rs` says the default tables are ported from reference
 homunculus/mercenary/PVP tables. Its distinctive monster IDs, tactic settings,
@@ -52,9 +50,13 @@ who wish to modify it to contact the author. No separate permission covering
 this Rust adaptation was found in the supplied repository evidence. Those
 notices are evidence of a permission question, not a determination of the legal
 status of individual numeric settings. Added credit alone does not settle it.
-Next step: establish applicable permission for the inherited defaults, or
-replace those defaults with independently chosen settings if permission is unavailable.
-The implementation and defaults remain unchanged.
+Decision (2026-10-24, the user): the defaults are retained as upstream
+nostalro-client ships them, with AzzyAI credited in the README and NOTICE, the
+same footing upstream publishes them on. This is a project decision, not a
+permission: none was sought or found for the adaptation, and AzzyAI's notices
+still ask anyone modifying it to contact its author. companion_ai.json (the
+same settings, inherited from upstream) is covered by the same decision. If its
+author objects, the defaults are replaced with independently chosen settings.
 
 ## Resolved: generated rAthena datasets
 

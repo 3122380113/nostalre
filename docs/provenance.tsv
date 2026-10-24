@@ -79,7 +79,7 @@ client/src/ui/escape.rs	modified or added since baseline	keep	Retain source and 
 client/src/ui/in_game.rs	modified or added since baseline	keep	Retained per user decision; implementation/compatibility mappings alone are not treated as content-removal findings. See docs/third-party-content.md.
 client/src/ui/mod.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 client/src/ui/windows.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-companion_ai.json	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+companion_ai.json	upstream baseline	keep	AzzyAI-style settings inherited from upstream; kept and credited as tactics.rs (docs/third-party-content.md).
 config.sample.json	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 docs/TODO.md	modified or added since baseline	removed	Internal checklist removed before publication.
 docs/configuration.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -104,7 +104,7 @@ lib/ai/src/context.rs	upstream baseline	keep	Retain source and attribution; orig
 lib/ai/src/engine/mod.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/ai/src/engine/target.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/ai/src/lib.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-lib/ai/src/tactics.rs	upstream baseline	review	Inherited defaults closely match AzzyAI tactic tables; clarify reuse permission for this adaptation (docs/third-party-content.md).
+lib/ai/src/tactics.rs	upstream baseline	keep	Inherited defaults closely match AzzyAI tactic tables; kept as upstream ships them, credited (decision 2026-10-24, docs/third-party-content.md).
 lib/audio/Cargo.toml	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/audio/src/attenuation.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/audio/src/bgm_retry.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.

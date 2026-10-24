@@ -1,6 +1,6 @@
 # Release review
 
-Status: implementations retained; bundled-content review completed with one upstream permission question (AzzyAI) open. rAthena-derived files are distributed under GPL-3.0-or-later.
+Status: implementations retained; bundled-content review completed. The AzzyAI tactic defaults are kept as upstream ships them, credited (a project decision, not a permission). rAthena-derived files are distributed under GPL-3.0-or-later.
 No original Git history or private executable-research scripts/documents were imported.
 
 ## Inventory
@@ -29,8 +29,8 @@ The user confirmed retention of the implementations on 2026-10-23. The former
 blocker. Current dispositions in provenance.tsv retain those implementations.
 
 The completed content audit is in [third-party-content.md](third-party-content.md).
-One upstream permission question remains: the inherited AzzyAI tactic defaults
-(lib/ai/src/tactics.rs). The seven rAthena-derived dataset files were confirmed
+The inherited AzzyAI tactic defaults (lib/ai/src/tactics.rs, companion_ai.json)
+are kept as upstream ships them, credited; see third-party-content.md. The seven rAthena-derived dataset files were confirmed
 GPL-3.0-or-later on 2026-10-24 and are distributed under those terms; no code or
 data was removed in this pass.
 Font copyright details, W3C keyboard notices, and source credits were added.
@@ -76,5 +76,5 @@ release, with the GPL text, every notice and links to the tagged sources of all
 three. The roBrowser web client is no longer in the APK. Before making this
 repository public:
 
-- Resolve the AzzyAI permission question above. companion_ai.json carries
-  AzzyAI-style settings inherited from upstream and should be checked with it.
+- Remove the old pre-rewrite commits from GitHub (the repository is recreated
+  from the rewritten history).
