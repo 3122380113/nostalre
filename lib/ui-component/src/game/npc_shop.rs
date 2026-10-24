@@ -11,6 +11,7 @@ use crate::{BuildCtx, InGameWindow, Window};
 use nostalre_game::data_table::DataTable;
 use nostalre_game::event::GameEvent;
 use nostalre_game::npc_shop::{NpcShopData, NpcShopMode, ShopKind};
+use nostalre_ui::context::PhysicalKeyCode as KeyCode;
 use nostalre_ui::draw::{self, DrawCall, TextureRef};
 use nostalre_ui::frame::{ButtonTextures, RESIZE_HANDLE_TEX, UiFrame, WidgetId, WindowOrder};
 use nostalre_ui::rect::Rect;
@@ -110,6 +111,24 @@ pub struct NpcShop {
     resize_start_rows: Option<usize>,
     container: DialogContainer,
     drag_all: bool,
+    /// Where the keys are ([`NpcShop::keys`])
+    focus: Focus,
+    /// The basket line the keys picked
+    basket_pick: usize,
+}
+
+/// The basket line the keys picked, while a controller is in use
+const PICK_TINT: [f32; 4] = [0.20, 0.42, 0.88, 0.50];
+
+/// The side of a shop the keys work
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Focus {
+    List,
+    Basket,
+    /// The footer's Buy (or Sell), or its Cancel
+    Buttons {
+        cancel: bool,
+    },
 }
 
 impl Default for NpcShop {
@@ -131,6 +150,8 @@ impl NpcShop {
             resize_start_rows: None,
             container: DialogContainer::new(),
             drag_all: true,
+            focus: Focus::List,
+            basket_pick: 0,
         }
     }
 
@@ -219,6 +240,13 @@ impl InGameWindow for NpcShop {
         }
 
         let mut events = Vec::new();
+        // the amount popup takes the keys while it is up; the Enter that opened it is not its answer too
+        if self.qty_popup.is_none() {
+            self.keys(ui, ctx, &mut events);
+            if self.qty_popup.is_some() {
+                ui.ctx.key_enter = false;
+            }
+        }
 
         let prev_grf = ui.has_grf_textures;
         ui.has_grf_textures = self.has_grf_textures;
@@ -328,10 +356,7 @@ impl NpcShop {
         let pad_y = CONTAINER_PAD_Y;
         let scrollbar_w = SCROLLBAR_W;
 
-        let visible_indices: Vec<usize> = match self.shop.mode {
-            Some(NpcShopMode::Sell) => self.shop.visible_sell_indices(),
-            _ => (0..self.shop.item_count()).collect(),
-        };
+        let visible_indices = self.list_indices();
         let item_count = visible_indices.len();
         let visible = layout.input_rows;
 
@@ -609,6 +634,16 @@ impl NpcShop {
             if response.hovered() {
                 ui.any_interactive_hovered = true;
             }
+            let picked = self.focus == Focus::Basket && ui.ctx.pad_labels && ci == self.basket_pick;
+            if picked && !barter {
+                let (v, idx) =
+                    draw::quad_vertices(row_rect.x, row_rect.y, row_rect.w, row_rect.h, PICK_TINT);
+                ui.draw_calls.push(DrawCall {
+                    vertices: v.into(),
+                    indices: idx.into(),
+                    texture: TextureRef::White,
+                });
+            }
 
             if barter {
                 let name = self.item_display_name(basket_item.source_index, ctx);
@@ -620,7 +655,7 @@ impl NpcShop {
                     under_item: Some(i64::from(basket_item.quantity)),
                     times: u32::try_from(basket_item.quantity).unwrap_or(0),
                     cost_slots: BARTER_BASKET_COSTS,
-                    selected: false,
+                    selected: picked,
                 };
                 draw_barter_entry(ui, ctx.data, &self.shop, &entry, &name, grf, text_color);
             } else {
@@ -734,63 +769,18 @@ impl NpcShop {
             Some(NpcShopMode::Sell) => (&SELL_BTN, "Sell"),
             _ => (&BUY_BTN, "Buy"),
         };
-        let action_btn = ui.button(
-            BUY_SELL_BTN_ID,
-            Rect::new(action_x, btn_y, btn_w, btn_h),
-            action_tex,
-            action_label,
-        );
-        let cancel_btn = ui.button(
-            CANCEL_BTN_ID,
-            Rect::new(cancel_x, btn_y, btn_w, btn_h),
-            &CANCEL_BTN_TEX,
-            "Cancel",
-        );
+        let action_rect = Rect::new(action_x, btn_y, btn_w, btn_h);
+        let cancel_rect = Rect::new(cancel_x, btn_y, btn_w, btn_h);
+        let action_btn = ui.button(BUY_SELL_BTN_ID, action_rect, action_tex, action_label);
+        let cancel_btn = ui.button(CANCEL_BTN_ID, cancel_rect, &CANCEL_BTN_TEX, "Cancel");
+        if ui.ctx.pad_labels
+            && let Focus::Buttons { cancel } = self.focus
+        {
+            crate::helper::focus_ring(ui, if cancel { cancel_rect } else { action_rect });
+        }
 
-        if action_btn.clicked() && !self.shop.basket.is_empty() {
-            match self.shop.mode {
-                Some(NpcShopMode::Buy) => {
-                    let items: Vec<(i16, u32)> = self
-                        .shop
-                        .basket
-                        .iter()
-                        .map(|c| {
-                            let item_id = self.shop.buy_items[c.source_index].item.item_id;
-                            (c.quantity, item_id)
-                        })
-                        .collect();
-                    // a market or a barter stays open: the basket empties now, so a second click buys nothing
-                    // twice, and the answer takes what was bought off the stock
-                    match self.shop.kind {
-                        ShopKind::Market => {
-                            events.push(GameEvent::RequestNpcMarketBuy { items });
-                            self.shop.basket.clear();
-                        }
-                        ShopKind::Barter { extended } => {
-                            let items = self.shop.take_barter_purchase(&ctx.character.inventory);
-                            events.push(GameEvent::RequestNpcBarterBuy { extended, items });
-                        }
-                        ShopKind::Plain => {
-                            events.push(GameEvent::RequestNpcShopBuy { items });
-                            self.close();
-                        }
-                    }
-                }
-                Some(NpcShopMode::Sell) => {
-                    let items: Vec<(i16, i16)> = self
-                        .shop
-                        .basket
-                        .iter()
-                        .map(|c| {
-                            let index = self.shop.sell_items[c.source_index].item.index as i16;
-                            (index, c.quantity)
-                        })
-                        .collect();
-                    events.push(GameEvent::RequestNpcShopSell { items });
-                    self.close();
-                }
-                None => {}
-            }
+        if action_btn.clicked() {
+            self.confirm(ctx, events);
         }
 
         if cancel_btn.clicked() {
@@ -798,6 +788,154 @@ impl NpcShop {
         }
 
         win
+    }
+
+    /// The list's lines: what is for sale, or what can be sold
+    fn list_indices(&self) -> Vec<usize> {
+        match self.shop.mode {
+            Some(NpcShopMode::Sell) => self.shop.visible_sell_indices(),
+            _ => (0..self.shop.item_count()).collect(),
+        }
+    }
+
+    /// The keys, a controller's D-pad and buttons. Up/Down walk the list or the basket, Left/Right go between
+    /// them, Down off the basket's end (or Right from the list with nothing in it) reaches the footer's buttons;
+    /// Enter (A) moves the picked line across (asking the amount as a drag does) or presses the button. A
+    /// controller's Start (Space while one is in use, so a keyboard's stray Space buys nothing) buys or sells
+    /// from anywhere
+    fn keys(&mut self, ui: &UiFrame, ctx: &BuildCtx, events: &mut Vec<GameEvent>) {
+        let c = &ui.ctx;
+        let step = isize::from(c.key_down) - isize::from(c.key_up);
+        let basket_len = self.shop.basket.len();
+        // a line taken out since: the pick stays on the basket's last
+        self.basket_pick = self.basket_pick.min(basket_len.saturating_sub(1));
+        if self.focus == Focus::Basket && basket_len == 0 {
+            self.focus = Focus::List;
+        }
+        let layout = self.layout();
+        match self.focus {
+            Focus::List if c.key_right => {
+                self.focus = if basket_len > 0 {
+                    Focus::Basket
+                } else {
+                    Focus::Buttons { cancel: false }
+                };
+            }
+            Focus::List => {
+                let lines = self.list_indices();
+                let at = self
+                    .shop
+                    .selected_index
+                    .and_then(|index| lines.iter().position(|&l| l == index));
+                // the first key on a list nothing is picked in picks its first line
+                let at = match at {
+                    Some(at) => at
+                        .saturating_add_signed(step)
+                        .min(lines.len().saturating_sub(1)),
+                    None if !lines.is_empty() && (step != 0 || c.key_enter) => 0,
+                    None => usize::MAX,
+                };
+                if let Some(&index) = lines.get(at) {
+                    self.shop.selected_index = Some(index);
+                    keep_in_view(&mut self.scroll_offset, at, layout.input_rows);
+                    if c.key_enter {
+                        self.drop_on_output(index, ctx);
+                    }
+                }
+            }
+            Focus::Basket if c.key_left => self.focus = Focus::List,
+            Focus::Basket if c.key_down && self.basket_pick + 1 >= basket_len => {
+                self.focus = Focus::Buttons { cancel: false };
+            }
+            Focus::Basket => {
+                self.basket_pick = self
+                    .basket_pick
+                    .saturating_add_signed(step)
+                    .min(basket_len - 1);
+                keep_in_view(
+                    &mut self.output_scroll_offset,
+                    self.basket_pick,
+                    layout.output_rows,
+                );
+                if c.key_enter {
+                    self.drop_on_input(self.basket_pick, ctx);
+                }
+            }
+            Focus::Buttons { cancel } => {
+                if c.key_left {
+                    self.focus = if cancel {
+                        Focus::Buttons { cancel: false }
+                    } else {
+                        Focus::List
+                    };
+                } else if c.key_right {
+                    self.focus = Focus::Buttons { cancel: true };
+                } else if c.key_up {
+                    self.focus = if basket_len > 0 {
+                        Focus::Basket
+                    } else {
+                        Focus::List
+                    };
+                } else if c.key_enter && cancel {
+                    events.push(GameEvent::RequestNpcShopClose);
+                } else if c.key_enter {
+                    self.confirm(ctx, events);
+                }
+            }
+        }
+        if c.pad_labels && c.pressed_codes.contains(&KeyCode::Space) {
+            self.confirm(ctx, events);
+        }
+    }
+
+    /// Buys or sells what is in the basket: the footer's button, or Space (a controller's Start)
+    fn confirm(&mut self, ctx: &BuildCtx, events: &mut Vec<GameEvent>) {
+        if self.shop.basket.is_empty() {
+            return;
+        }
+        match self.shop.mode {
+            Some(NpcShopMode::Buy) => {
+                let items: Vec<(i16, u32)> = self
+                    .shop
+                    .basket
+                    .iter()
+                    .map(|c| {
+                        let item_id = self.shop.buy_items[c.source_index].item.item_id;
+                        (c.quantity, item_id)
+                    })
+                    .collect();
+                // a market or a barter stays open: the basket empties now, so a second click buys nothing
+                // twice, and the answer takes what was bought off the stock
+                match self.shop.kind {
+                    ShopKind::Market => {
+                        events.push(GameEvent::RequestNpcMarketBuy { items });
+                        self.shop.basket.clear();
+                    }
+                    ShopKind::Barter { extended } => {
+                        let items = self.shop.take_barter_purchase(&ctx.character.inventory);
+                        events.push(GameEvent::RequestNpcBarterBuy { extended, items });
+                    }
+                    ShopKind::Plain => {
+                        events.push(GameEvent::RequestNpcShopBuy { items });
+                        self.close();
+                    }
+                }
+            }
+            Some(NpcShopMode::Sell) => {
+                let items: Vec<(i16, i16)> = self
+                    .shop
+                    .basket
+                    .iter()
+                    .map(|c| {
+                        let index = self.shop.sell_items[c.source_index].item.index as i16;
+                        (index, c.quantity)
+                    })
+                    .collect();
+                events.push(GameEvent::RequestNpcShopSell { items });
+                self.close();
+            }
+            None => {}
+        }
     }
 
     fn item_display_name(&self, index: usize, ctx: &BuildCtx) -> String {
@@ -915,10 +1053,21 @@ impl NpcShop {
         self.output_scroll_offset = 0;
         self.input_visible_rows = INPUT_DEFAULT_ROWS;
         self.resize_start_rows = None;
+        self.focus = Focus::List;
+        self.basket_pick = 0;
     }
 }
 
 /// The pale oval kRO draws under every icon place of a shop list, filled or not
+/// `offset` moved so line `at` is among the `rows` shown
+fn keep_in_view(offset: &mut usize, at: usize, rows: usize) {
+    if at < *offset {
+        *offset = at;
+    } else if at >= *offset + rows {
+        *offset = at + 1 - rows;
+    }
+}
+
 fn draw_slot(ui: &mut UiFrame, x: f32, y: f32) {
     draw_quad(ui, x, y, [1.0; 4], ITEMWIN_MID_TEX.to_string());
 }
@@ -1119,6 +1268,126 @@ mod tests {
     use nostalre_ui::context::UiContext;
     use nostalre_ui::state::StateCache;
     use nostalre_ui::test_support::test_frame;
+
+    fn buy_line(item_id: u32, name: &str) -> ShopBuyItem {
+        ShopBuyItem {
+            item: Item {
+                grade: 0,
+                options: Default::default(),
+                index: 0,
+                item_id,
+                item_type: ItemType::Healing,
+                count: 1,
+                is_identified: true,
+                is_damaged: false,
+                refining_level: 0,
+                slot: [0; 4],
+                location: 0,
+                wear_state: 0,
+                name: name.into(),
+                resource_name: None,
+            },
+            price: 50,
+            discount_price: 50,
+        }
+    }
+
+    #[test]
+    fn keys_pick_a_line_ask_its_amount_and_buy() {
+        let mut shop_ui = NpcShop::new();
+        shop_ui.shop.open_buy(
+            100,
+            vec![buy_line(501, "Red Potion"), buy_line(502, "Orange Potion")],
+        );
+        let mut state = StateCache::new();
+        let mut character = Character::new();
+        let data = DataTable::new();
+        let mut frame = |shop_ui: &mut NpcShop, keys: fn(&mut UiContext)| {
+            let mut ui_ctx = UiContext::new(1024.0, 768.0);
+            keys(&mut ui_ctx);
+            let mut ui = test_frame(&mut ui_ctx, &mut state);
+            shop_ui.build(&mut ui, &mut crate::BuildCtx::test(&mut character, &data))
+        };
+
+        frame(&mut shop_ui, |c| c.key_down = true);
+        frame(&mut shop_ui, |c| c.key_down = true);
+        assert_eq!(
+            shop_ui.shop.selected_index,
+            Some(1),
+            "the first key picks the first line, the next walks on"
+        );
+        frame(&mut shop_ui, |c| c.key_enter = true);
+        assert!(
+            shop_ui.qty_popup.is_some(),
+            "Enter asks how many, and is not the answer"
+        );
+        frame(&mut shop_ui, |c| c.key_up = true);
+        frame(&mut shop_ui, |c| c.key_up = true);
+        frame(&mut shop_ui, |c| c.key_enter = true);
+        assert_eq!(shop_ui.shop.basket.len(), 1);
+        assert_eq!(
+            shop_ui.shop.basket[0].quantity, 2,
+            "Up twice from empty is two"
+        );
+
+        let events = frame(&mut shop_ui, |c| c.pressed_codes.push(KeyCode::Space));
+        assert!(
+            events.is_empty(),
+            "a keyboard's Space buys nothing, got {events:?}"
+        );
+        let events = frame(&mut shop_ui, |c| {
+            c.pad_labels = true;
+            c.pressed_codes.push(KeyCode::Space);
+        });
+        assert!(
+            matches!(events.as_slice(), [GameEvent::RequestNpcShopBuy { items }] if items == &vec![(2, 502)]),
+            "Space (Start) buys the basket, got {events:?}"
+        );
+    }
+
+    #[test]
+    fn keys_reach_the_footer_buttons() {
+        let mut shop_ui = NpcShop::new();
+        shop_ui
+            .shop
+            .open_buy(100, vec![buy_line(501, "Red Potion")]);
+        shop_ui.shop.add_to_basket(0, 3);
+        let mut state = StateCache::new();
+        let mut character = Character::new();
+        let data = DataTable::new();
+        let mut frame = |shop_ui: &mut NpcShop, keys: fn(&mut UiContext)| {
+            let mut ui_ctx = UiContext::new(1024.0, 768.0);
+            keys(&mut ui_ctx);
+            let mut ui = test_frame(&mut ui_ctx, &mut state);
+            shop_ui.build(&mut ui, &mut crate::BuildCtx::test(&mut character, &data))
+        };
+
+        frame(&mut shop_ui, |c| c.key_right = true);
+        assert_eq!(shop_ui.focus, Focus::Basket);
+        frame(&mut shop_ui, |c| c.key_down = true);
+        assert_eq!(
+            shop_ui.focus,
+            Focus::Buttons { cancel: false },
+            "Down off the basket's end"
+        );
+        let events = frame(&mut shop_ui, |c| c.key_enter = true);
+        assert!(
+            matches!(events.as_slice(), [GameEvent::RequestNpcShopBuy { items }] if items == &vec![(3, 501)]),
+            "Enter on Buy buys, got {events:?}"
+        );
+
+        let mut shop_ui = NpcShop::new();
+        shop_ui
+            .shop
+            .open_buy(100, vec![buy_line(501, "Red Potion")]);
+        frame(&mut shop_ui, |c| c.key_right = true);
+        frame(&mut shop_ui, |c| c.key_right = true);
+        let events = frame(&mut shop_ui, |c| c.key_enter = true);
+        assert!(
+            matches!(events.as_slice(), [GameEvent::RequestNpcShopClose]),
+            "an empty basket: Right reaches Buy, Right again Cancel, got {events:?}"
+        );
+    }
 
     #[test]
     fn escape_closes_shop() {

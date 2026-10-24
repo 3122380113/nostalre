@@ -10,6 +10,8 @@ use std::ops::Index;
 /// How long a caster stays in its skill motion for a ground-placed skill.
 pub const GROUND_SKILL_EXEC_SECS: f32 = 0.6;
 const NO_DAMAGE_SKILL_EXEC_SECS: f32 = 0.6;
+/// How far an NPC answers from: rAthena's `area_size` (14) and one, each way
+pub const TALK_RANGE: u16 = 15;
 
 pub struct EntityCollection {
     entities: HashMap<u32, Entity>,
@@ -101,6 +103,23 @@ impl EntityCollection {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Entity> {
         self.entities.values_mut()
+    }
+
+    /// The NPC closest to `from` that can be talked to, within `range` cells each way (rAthena's
+    /// `npc_checknear` square): not a warp portal or a hidden trigger. Ties go to the lower id, so the pick
+    /// holds from frame to frame
+    pub fn nearest_talkable_npc(&self, from: (u16, u16), range: u16) -> Option<&Entity> {
+        self.iter()
+            .filter(|e| {
+                e.entity_type == EntityType::Npc && !crate::sprite_path::is_undrawn_actor(e.job)
+            })
+            .map(|e| {
+                let (x, y) = e.movement.cell_position();
+                (x.abs_diff(from.0).max(y.abs_diff(from.1)), e)
+            })
+            .filter(|&(distance, _)| distance <= range)
+            .min_by_key(|&(distance, e)| (distance, e.id))
+            .map(|(_, e)| e)
     }
 
     pub fn clear(&mut self) {
@@ -382,6 +401,54 @@ mod tests {
     use crate::skill::{SkillData, SkillTargetType};
     use models::enums::EnumWithNumberValue;
     use models::enums::class::JobName;
+
+    fn npc_at(id: u32, job: u16, x: u16, y: u16) -> Entity {
+        Entity::new(
+            id,
+            EntityType::Npc,
+            job,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            x,
+            y,
+            0,
+            150,
+        )
+    }
+
+    #[test]
+    fn nearest_talkable_npc_skips_warps_and_far_ones() {
+        let mut entities = EntityCollection::new();
+        entities.insert(npc_at(1, crate::sprite_path::JT_WARPNPC, 101, 100));
+        entities.insert(npc_at(2, 86, 104, 103));
+        entities.insert(npc_at(3, 86, 99, 97));
+        entities.insert(npc_at(4, 86, 120, 100));
+
+        let pick = |entities: &EntityCollection, range| {
+            entities
+                .nearest_talkable_npc((100, 100), range)
+                .map(|e| e.id)
+        };
+        assert_eq!(
+            pick(&entities, 15),
+            Some(3),
+            "the warp is nearer, but is no one to talk to"
+        );
+        assert_eq!(
+            pick(&entities, 2),
+            None,
+            "3 cells off, out of a 2-cell reach"
+        );
+
+        entities.insert(npc_at(5, 86, 102, 97));
+        assert_eq!(pick(&entities, 15), Some(3), "a tie goes to the lower id");
+    }
 
     fn make_entity(id: u32) -> Entity {
         Entity::new(

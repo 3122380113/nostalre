@@ -1,6 +1,7 @@
 //! The on-screen controls of a touch screen (the design canvas, "Touch HUD" and "Camera on controller and
 //! touch"): a move stick bottom left with the camera's turn buttons over it, Attack bottom right with four
-//! skills in an arc, three more slots beside them, the hotbar set; zoom and reset beside the minimap.
+//! skills in an arc, three more slots beside them, the hotbar set; zoom and reset beside the minimap. Over the
+//! arc, while an NPC is in reach, a Talk button with its name.
 //!
 //! Several fingers work at once. A finger that lands on a control (and not on a window drawn over it) is the
 //! controls' until it lifts: the client never makes it the mouse (`touch_zones`), and only such fingers press
@@ -19,6 +20,7 @@ const ZOOM_OUT_ID: WidgetId = WidgetId(7014);
 const RESET_ID: WidgetId = WidgetId(7015);
 const ATTACK_ID: WidgetId = WidgetId(7016);
 const SET_ID: WidgetId = WidgetId(7017);
+const TALK_ID: WidgetId = WidgetId(7018);
 /// The slot buttons: the arc's four, then the three beside it, 7020 to 7026
 const SLOT_BASE_ID: u32 = 7020;
 
@@ -26,28 +28,35 @@ const SLOT_BASE_ID: u32 = 7020;
 const MOUSE: u64 = u64::MAX;
 /// The most fingers the controls follow at once
 const MAX_POINTERS: usize = 10;
+// Sized for a thumb on a handheld (a 5.5" 1080p screen at Android's 150%: one unit about 0.1 mm), the stick
+// about 20 mm across and in from the corner, where the thumb rests rather than at the screen's edge
 const MARGIN: f32 = 24.0;
-const STICK_R: f32 = 72.0;
-const KNOB_R: f32 = 28.0;
-const STICK_BOTTOM: f32 = 40.0;
-const TURN_SIZE: f32 = 52.0;
+const STICK_MARGIN: f32 = 48.0;
+const STICK_R: f32 = 96.0;
+const KNOB_R: f32 = 36.0;
+const STICK_BOTTOM: f32 = 52.0;
+const TURN_SIZE: f32 = 54.0;
 const SMALL_SIZE: f32 = 44.0;
 const GAP: f32 = 10.0;
-const ATTACK_SIZE: f32 = 96.0;
+const ATTACK_SIZE: f32 = 108.0;
 /// Clear of the wallet, bottom right
-const ATTACK_BOTTOM: f32 = 120.0;
+const ATTACK_BOTTOM: f32 = 104.0;
 /// From the screen's right edge to Attack's
 const ATTACK_RIGHT: f32 = MARGIN + 20.0;
-const SKILL_SIZE: f32 = 60.0;
-const ARC_R: f32 = 112.0;
+const SKILL_SIZE: f32 = 66.0;
+const ARC_R: f32 = 126.0;
 /// The arc's skills, degrees round from the left of Attack to above it
 const ARC_DEG: [f32; 4] = [190.0, 155.0, 120.0, 85.0];
 const SET_DEG: f32 = 50.0;
-const SET_R: f32 = 100.0;
-const SET_SIZE: f32 = 40.0;
+const SET_R: f32 = 112.0;
+const SET_SIZE: f32 = 42.0;
 const SET_LABELS: [&str; PAD_SETS as usize] = ["1/3", "2/3", "3/3"];
-const ITEM_SIZE: f32 = 52.0;
-const ICON: f32 = 36.0;
+const ITEM_SIZE: f32 = 56.0;
+const ICON: f32 = 38.0;
+const TALK_W: f32 = 170.0;
+const TALK_H: f32 = 46.0;
+/// Room left and right of the NPC's name in the Talk button
+const TALK_PAD: f32 = 16.0;
 const HELD: [f32; 4] = style::faded(style::ACCENT, 0.35);
 const STICK_RING: [f32; 4] = style::faded(style::ACCENT, 0.4);
 const STICK_BASE: [f32; 4] = style::shade(0.3);
@@ -74,6 +83,8 @@ pub struct TouchSlots {
     /// The hotbar set: the buttons show its first seven slots
     pub set: u8,
     pub faces: [Option<SlotFace>; SLOT_BUTTONS],
+    /// The NPC a tap on Talk talks to, by name ("" when it has none yet); no Talk button without one
+    pub talk: Option<String>,
 }
 
 impl TouchSlots {
@@ -97,6 +108,7 @@ pub struct TouchInput {
     /// The `i`th slot button tapped (see [`TouchSlots::slot`])
     pub slot: Option<usize>,
     pub next_set: bool,
+    pub talk: bool,
 }
 
 /// A finger the controls own, or the mouse while its button is down
@@ -119,12 +131,15 @@ struct Layout {
     attack: Rect,
     set: Rect,
     slots: [Rect; SLOT_BUTTONS],
+    /// While an NPC is in reach
+    talk: Option<Rect>,
 }
 
 impl Layout {
-    /// `minimap`: where the HUD drew it; `dock`: the skill rows' rectangle, which the slot row keeps clear of
-    fn new(w: f32, h: f32, minimap: Rect, dock: Rect) -> Self {
-        let stick = (MARGIN + STICK_R, h - STICK_BOTTOM - STICK_R);
+    /// `minimap`: where the HUD drew it; `dock`: the skill rows' rectangle, which the slot row keeps clear of;
+    /// `talk`: an NPC is in reach
+    fn new(w: f32, h: f32, minimap: Rect, dock: Rect, talk: bool) -> Self {
+        let stick = (STICK_MARGIN + STICK_R, h - STICK_BOTTOM - STICK_R);
         let turn_top = stick.1 - STICK_R - GAP - TURN_SIZE;
         let column = minimap.x - GAP - SMALL_SIZE;
         let small = |i: f32| {
@@ -156,11 +171,22 @@ impl Layout {
             let x = first - (i as f32 + 1.0) * (ITEM_SIZE + GAP) + GAP;
             *slot = Rect::new(x, row_y, ITEM_SIZE, ITEM_SIZE);
         }
+        // over the arc's top skill, at Attack's right edge
+        let arc_top = ay - ARC_R * ARC_DEG[3].to_radians().sin() - SKILL_SIZE / 2.0;
+        let talk = talk.then(|| {
+            Rect::new(
+                w - ATTACK_RIGHT - TALK_W,
+                (arc_top - GAP - TALK_H).floor(),
+                TALK_W,
+                TALK_H,
+            )
+        });
         Self {
+            talk,
             stick,
-            turn_left: Rect::new(MARGIN, turn_top, TURN_SIZE, TURN_SIZE),
+            turn_left: Rect::new(STICK_MARGIN, turn_top, TURN_SIZE, TURN_SIZE),
             turn_right: Rect::new(
-                MARGIN + 2.0 * STICK_R - TURN_SIZE,
+                STICK_MARGIN + 2.0 * STICK_R - TURN_SIZE,
                 turn_top,
                 TURN_SIZE,
                 TURN_SIZE,
@@ -189,7 +215,7 @@ impl Layout {
             self.attack,
             self.set,
         ];
-        fixed.into_iter().chain(self.slots)
+        fixed.into_iter().chain(self.slots).chain(self.talk)
     }
 }
 
@@ -218,7 +244,13 @@ impl TouchControls {
 
     /// A controller is in use: the controls are not drawn, but their places stay known
     pub fn rest(&mut self, ui: &UiFrame, minimap: Rect, dock: Rect) {
-        let layout = Layout::new(ui.ctx.screen_width, ui.ctx.screen_height, minimap, dock);
+        let layout = Layout::new(
+            ui.ctx.screen_width,
+            ui.ctx.screen_height,
+            minimap,
+            dock,
+            false,
+        );
         self.owned.clear();
         self.stick = None;
         self.zones.clear();
@@ -232,7 +264,8 @@ impl TouchControls {
         dock: Rect,
         slots: &TouchSlots,
     ) -> TouchInput {
-        let layout = Layout::new(ui.ctx.screen_width, ui.ctx.screen_height, minimap, dock);
+        let (w, h) = (ui.ctx.screen_width, ui.ctx.screen_height);
+        let layout = Layout::new(w, h, minimap, dock, slots.talk.is_some());
         self.zones.clear();
         self.zones.extend(layout.zones());
         let (ptrs, count) = self.pointers(ui);
@@ -249,6 +282,7 @@ impl TouchControls {
         let reset = press(ui, RESET_ID, layout.reset);
         let attack = press(ui, ATTACK_ID, layout.attack);
         let set = press(ui, SET_ID, layout.set);
+        let talk = layout.talk.map(|r| (r, press(ui, TALK_ID, r)));
         let mut slot_presses = [Press::default(); SLOT_BUTTONS];
         for (i, p) in slot_presses.iter_mut().enumerate() {
             *p = press(ui, WidgetId(SLOT_BASE_ID + i as u32), layout.slots[i]);
@@ -264,6 +298,22 @@ impl TouchControls {
             (layout.set, set),
         ] {
             round_button(ui, r, p.held);
+        }
+        if let Some((r, p)) = talk {
+            style::pill_button(ui, r);
+            if p.held {
+                style::push_white(
+                    ui,
+                    draw::rounded_rect(
+                        r.x + 1.0,
+                        r.y + 1.0,
+                        r.w - 2.0,
+                        r.h - 2.0,
+                        r.h * 0.5 - 1.0,
+                        HELD,
+                    ),
+                );
+            }
         }
         for (i, (r, p)) in layout.slots.iter().zip(&slot_presses).enumerate() {
             if i < ARC_DEG.len() {
@@ -283,6 +333,14 @@ impl TouchControls {
             }
         }
         label(ui, layout.attack, "Attack");
+        if let (Some((r, _)), Some(name)) = (talk, &slots.talk) {
+            let text = if name.is_empty() {
+                "Talk".to_string()
+            } else {
+                format!("Talk · {name}")
+            };
+            label(ui, r, &fit(ui, &text, r.w - 2.0 * TALK_PAD));
+        }
         label(
             ui,
             layout.set,
@@ -302,6 +360,7 @@ impl TouchControls {
         out.attack = attack.tapped;
         out.next_set = set.tapped;
         out.slot = slot_presses.iter().position(|p| p.tapped);
+        out.talk = talk.is_some_and(|(_, p)| p.tapped);
         out
     }
 
@@ -427,6 +486,18 @@ fn slot_icon(ui: &mut UiFrame, r: Rect, icon: &str) {
     });
 }
 
+/// `text` cut to `max` wide in bold, an ellipsis where it was cut
+fn fit(ui: &UiFrame, text: &str, max: f32) -> String {
+    if style::measure_bold(ui, text) <= max {
+        return text.to_string();
+    }
+    let mut cut: String = text.to_string();
+    while !cut.is_empty() && style::measure_bold(ui, &format!("{cut}…")) > max {
+        cut.pop();
+    }
+    format!("{}…", cut.trim_end())
+}
+
 /// Bold text in the middle of `r`
 fn label(ui: &mut UiFrame, r: Rect, text: &str) {
     let (cx, cy) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
@@ -472,7 +543,7 @@ mod tests {
     fn layout() -> Layout {
         let minimap = Rect::new(1300.0, 14.0, 190.0, 190.0);
         let dock = Rect::new(500.0, 700.0, 534.0, 50.0);
-        Layout::new(1536.0, 864.0, minimap, dock)
+        Layout::new(1536.0, 864.0, minimap, dock, true)
     }
 
     #[test]
@@ -495,8 +566,33 @@ mod tests {
 
     #[test]
     fn no_two_controls_overlap() {
+        no_overlap(layout());
+    }
+
+    #[test]
+    fn no_two_controls_overlap_on_a_handheld() {
+        // a 1080p handheld at Android's 150%, its minimap and skill rows where the HUD draws them there
+        let minimap = Rect::new(1077.0, 40.0, 187.0, 187.0);
+        let dock = Rect::new(390.0, 583.0, 500.0, 137.0);
+        no_overlap(Layout::new(1280.0, 720.0, minimap, dock, true));
+    }
+
+    fn no_overlap(layout: Layout) {
         // the controls are round (the slot row's squares fit in their circle as well): centres far enough apart
-        let zones: Vec<Rect> = layout().zones().collect();
+        let talk = layout.talk.expect("an NPC in reach");
+        let round = Layout {
+            talk: None,
+            ..layout
+        };
+        let zones: Vec<Rect> = round.zones().collect();
+        // the Talk pill is not: its box clear of every other's
+        for r in &zones {
+            let apart = talk.x >= r.x + r.w + GAP
+                || r.x >= talk.x + talk.w + GAP
+                || talk.y >= r.y + r.h + GAP
+                || r.y >= talk.y + talk.h + GAP;
+            assert!(apart, "{talk:?} meets {r:?}");
+        }
         let centre = |r: &Rect| (r.x + r.w / 2.0, r.y + r.h / 2.0);
         for (i, a) in zones.iter().enumerate() {
             for b in &zones[i + 1..] {
@@ -511,7 +607,7 @@ mod tests {
     fn the_slot_row_keeps_off_the_skill_rows() {
         let minimap = Rect::new(800.0, 14.0, 150.0, 150.0);
         let dock = Rect::new(280.0, 400.0, 534.0, 150.0);
-        let l = Layout::new(1100.0, 600.0, minimap, dock);
+        let l = Layout::new(1100.0, 600.0, minimap, dock, true);
         for r in &l.slots[4..] {
             assert!(r.y + r.h <= dock.y, "{r:?}");
         }

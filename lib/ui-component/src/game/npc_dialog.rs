@@ -114,6 +114,8 @@ pub struct NpcDialog {
     container: DialogContainer,
     win_size: (f32, f32),
     say_text: SayText,
+    /// The deal popup's button the keys picked, as they stand: 0 Buy, 1 Sell, 2 Cancel
+    deal_choice: usize,
 }
 
 /// The say window's text laid out, kept while its text, width and font stay
@@ -268,6 +270,7 @@ impl NpcDialog {
             container: DialogContainer::new(),
             win_size: (280.0, 120.0),
             say_text: SayText::default(),
+            deal_choice: 0,
         }
     }
 }
@@ -439,6 +442,9 @@ impl InGameWindow for NpcDialog {
         let screen = Rect::new(0.0, 0.0, ui.ctx.screen_width, ui.ctx.screen_height);
         ui.interact(OVERLAY_ID, screen);
 
+        if state != NpcDialogState::WaitingForDealType {
+            self.deal_choice = 0;
+        }
         if state == NpcDialogState::WaitingForDealType {
             let result = self.build_deal_type_popup(ui);
             ui.has_grf_textures = prev_grf;
@@ -828,21 +834,32 @@ impl NpcDialog {
         let sell = ui.button(SELL_BTN_ID, btns[1], &SELL_BTN, "Sell");
         let buy = ui.button(BUY_BTN_ID, btns[2], &BUY_BTN, "Buy");
 
-        if buy.clicked() {
-            events.push(GameEvent::RequestNpcDealType {
-                npc_id: self.dialog.npc_id,
-                deal_type: 0,
-            });
-            self.dialog.close();
+        // the arrow keys (a controller's D-pad) walk the buttons as they stand, Enter (A) takes the picked one
+        if ui.ctx.key_left {
+            self.deal_choice = self.deal_choice.saturating_sub(1);
         }
-        if sell.clicked() {
-            events.push(GameEvent::RequestNpcDealType {
-                npc_id: self.dialog.npc_id,
-                deal_type: 1,
-            });
-            self.dialog.close();
+        if ui.ctx.key_right {
+            self.deal_choice = (self.deal_choice + 1).min(2);
         }
-        if cancel.clicked() {
+        if ui.ctx.pad_labels {
+            crate::helper::focus_ring(ui, btns[2 - self.deal_choice]);
+        }
+        let chosen = if buy.clicked() {
+            Some(0)
+        } else if sell.clicked() {
+            Some(1)
+        } else if cancel.clicked() {
+            Some(2)
+        } else {
+            ui.ctx.key_enter.then_some(self.deal_choice)
+        };
+        if let Some(choice) = chosen {
+            if choice < 2 {
+                events.push(GameEvent::RequestNpcDealType {
+                    npc_id: self.dialog.npc_id,
+                    deal_type: choice as u8,
+                });
+            }
             self.dialog.close();
         }
 
@@ -1090,6 +1107,34 @@ mod tests {
         let claimed = frame(&mut state, &mut npc, &mut click_row);
         assert_eq!(npc.dialog.selected_menu_index, 1);
         assert!(claimed, "the menu body must claim the pointer");
+    }
+
+    #[test]
+    fn deal_type_keys_walk_the_buttons_and_enter_takes_one() {
+        let mut npc = NpcDialog::new();
+        npc.dialog.show_deal_type(100);
+        let mut state = StateCache::new();
+        let mut frame = |keys: fn(&mut UiContext)| {
+            let mut ctx = UiContext::new(800.0, 600.0);
+            keys(&mut ctx);
+            let mut character = Character::new();
+            let data = DataTable::new();
+            let mut ui = test_frame(&mut ctx, &mut state);
+            npc.build(&mut ui, &mut crate::BuildCtx::test(&mut character, &data))
+        };
+
+        assert!(frame(|c| c.key_right = true).is_empty());
+        let events = frame(|c| c.key_enter = true);
+        assert!(
+            matches!(
+                events.as_slice(),
+                [GameEvent::RequestNpcDealType {
+                    npc_id: 100,
+                    deal_type: 1
+                }]
+            ),
+            "Right then Enter sells, got {events:?}"
+        );
     }
 
     #[test]

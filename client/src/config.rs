@@ -611,7 +611,12 @@ impl Default for Config {
             bgm_path: "BGM".to_string(),
             emblem_path: "emblem".to_string(),
             free_camera: false,
-            dpi_scale: 125.0,
+            // a handheld's screen is a few inches across: its windows and controls at 150%
+            dpi_scale: if cfg!(target_os = "android") {
+                150.0
+            } else {
+                125.0
+            },
             grf_paths: vec![nostalre_resources::grf::DEFAULT_ARCHIVE.to_string()],
             data_dir: None,
             install_dir: None,
