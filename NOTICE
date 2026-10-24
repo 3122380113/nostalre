@@ -36,8 +36,8 @@ vendor/winit/src/keyboard.rs and reproduced in LICENSES/winit-W3C.txt.
 
 The AI design inherited from nostalro-client credits AzzyAI by Dr. Azzy /
 Spence Konde, https://github.com/SpenceKonde/AzzyAI. Inherited default tactic
-tables closely match its USER_AI/H_Tactics.lua and related tables. Reuse
-permission for this adaptation remains to be clarified; see
+tables closely match its USER_AI/H_Tactics.lua and related tables. They are
+kept as upstream ships them, with this credit; see
 docs/third-party-content.md.
 
 The generated job/item/skill/effect tables and network layout TSVs derive from
