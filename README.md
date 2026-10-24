@@ -12,7 +12,7 @@ client and local servers together for offline play.
 [![Based on nostalro-client](https://img.shields.io/badge/Based_on-nostalro--client-607D8B?style=flat)](https://github.com/nmeylan/nostalro-client)
 [![AI-assisted development](https://img.shields.io/badge/Development-AI--assisted-8E44AD?style=flat)](#ai-use-disclosure)
 
-**[Download test APK](https://github.com/si-klyde/nostalre/releases)** · [Install](#play-on-android) · [Contribute](#contributing) · [Credits](#attribution) · [License](#license) · [AI disclosure](#ai-use-disclosure)
+**[Download test APK](https://github.com/si-klyde/nostalre-launcher/releases)** · [Install](#play-on-android) · [Contribute](#contributing) · [Credits](#attribution) · [License](#license) · [AI disclosure](#ai-use-disclosure)
 
 ![nostalRE gameplay on an Android handheld](docs/images/android-handheld.webp)
 
@@ -22,7 +22,7 @@ client and local servers together for offline play.
 
 ### Download
 
-Open **[GitHub Releases](https://github.com/si-klyde/nostalre/releases)** and
+Open **[nostalRE launcher's Releases](https://github.com/si-klyde/nostalre-launcher/releases)** and
 select the ARM64 `.apk` under a release's **Assets**. Read its notes for the
 build's status and known issues.
 
@@ -59,8 +59,8 @@ logs or a recording when available.
 ## Contributing
 
 This repository contains the native Rust client and resource tools. The Android
-launcher, local servers, and APK packaging are maintained in a separate integration
-project. Building the native library here is one part of producing an APK.
+app, local servers, and APK packaging live in [nostalRE launcher](https://github.com/si-klyde/nostalre-launcher), which
+takes this repository as a submodule and also runs nostalRE with its servers on a PC.
 
 See [Features.md](Features.md) and the [protocol report](docs/packet-status-20250716.md)
 for current implementation details.
@@ -145,8 +145,8 @@ cargo ndk -t arm64-v8a -P 26 build --release -p nostalre-client --lib
 
 Output: `target/aarch64-linux-android/release/libnostalre_client.so`.
 `CARGO_TARGET_DIR` can select another build directory. The library's build API
-level is separate from the packaged app's Android 11 minimum. APK packaging
-also requires the separate integration project.
+level is separate from the packaged app's Android 11 minimum. The APK itself is
+built by [nostalRE launcher](https://github.com/si-klyde/nostalre-launcher) (`scripts/build-apk.sh`).
 
 </details>
 
@@ -222,7 +222,8 @@ Apache-2.0, MIT, and OFL parts remain available under their own terms in source 
 
 The APK's login, char, and map servers are built from
 [si-klyde/rathena-nostalre](https://github.com/si-klyde/rathena-nostalre), a GPL-3.0
-fork of rAthena; tag `nostalre-v0.1.0` matches the v0.1.0 APK.
+fork of rAthena, and its app and bridge from [nostalRE launcher](https://github.com/si-klyde/nostalre-launcher) (GPL-3.0);
+each release's notes link the tags it was built from.
 
 ## AI use disclosure
 

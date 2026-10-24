@@ -51,4 +51,7 @@ docs/third-party-content.md lists the files.
 
 The Android app's login, char and map servers are built from rAthena with
 local changes, published under GPL-3.0 at
-https://github.com/si-klyde/rathena-nostalre (tag nostalre-v0.1.0 for v0.1.0).
+https://github.com/si-klyde/rathena-nostalre. The app, its grf-server bridge and
+the build scripts are published under GPL-3.0 at
+https://github.com/si-klyde/nostalre-launcher; each release's notes name the
+tags its APK was built from.
