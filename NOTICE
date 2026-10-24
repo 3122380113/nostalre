@@ -48,3 +48,7 @@ version 3 or later. These files are distributed under GPL-3.0-or-later, and
 released binaries that compile them in are distributed under GPL-3.0-or-later
 as a whole. LICENSES/rathena-GPL-3.0.txt supplies the full version 3 text.
 docs/third-party-content.md lists the files.
+
+The Android app's login, char and map servers are built from rAthena with
+local changes, published under GPL-3.0 at
+https://github.com/si-klyde/rathena-nostalre (tag nostalre-v0.1.0 for v0.1.0).
