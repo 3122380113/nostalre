@@ -42,9 +42,6 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
-      - name: Resolve dependencies
-        run: cargo generate-lockfile
-
       - name: Build
         run: cargo build --workspace --all-targets --locked
 

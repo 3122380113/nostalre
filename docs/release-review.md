@@ -1,6 +1,6 @@
 # Release review
 
-Status: implementations retained; bundled-content review completed with two specific upstream license/permission questions recorded below.
+Status: implementations retained; bundled-content review completed with one upstream permission question (AzzyAI) open. rAthena-derived files are distributed under GPL-3.0-or-later.
 No original Git history or private executable-research scripts/documents were imported.
 
 ## Inventory
@@ -18,9 +18,9 @@ Repository preparation files added here are described below.
 - Removed the unused client-message dump and its module declaration.
 - Retained upstream Apache-2.0, rust-ro MIT, winit Apache-2.0, and font OFL notices.
 - Added full MIT notices for incorporated Korangar code and linked Lua.
-- Added a standalone README and NOTICE; CI targets main and resolves its local lockfile before building.
+- Added a standalone README and NOTICE; CI targets main and builds with the committed Cargo.lock.
 - Excluded local config, data archives, captures, build output, credentials, and assistant settings.
-- Left history uncommitted so unresolved material need not become public history.
+- Started fresh history with one import commit (2026-10-23); no integration history is included.
 
 ## Bundled-content and attribution review
 
@@ -29,9 +29,10 @@ The user confirmed retention of the implementations on 2026-10-23. The former
 blocker. Current dispositions in provenance.tsv retain those implementations.
 
 The completed content audit is in [third-party-content.md](third-party-content.md).
-Two concrete upstream permission/license-scope questions remain: the inherited
-AzzyAI tactic defaults, and seven rAthena-derived dataset files. Eight files
-are flagged for those two questions; no code or data was removed in this pass.
+One upstream permission question remains: the inherited AzzyAI tactic defaults
+(lib/ai/src/tactics.rs). The seven rAthena-derived dataset files were confirmed
+GPL-3.0-or-later on 2026-10-24 and are distributed under those terms; no code or
+data was removed in this pass.
 Font copyright details, W3C keyboard notices, and source credits were added.
 
 ## Validation
@@ -65,6 +66,15 @@ resolved dependencies offline, built all targets, and passed the same 2,407 test
 with the five socket tests excluded. CI keeps the unfiltered test command.
 Optional asset-dependent tests may return early without supplied resources;
 passing them does not validate asset rendering or provenance.
-Before creating public history, inspect the staged file list and inventory,
-scan for secrets and bundled assets, and resolve the pending entries above.
-No GitHub remote or publication is configured during preparation.
+
+## Publication status (2026-10-24)
+
+The export is pushed to the private repository si-klyde/nostalre, with a v0.1.0
+debug-signed test APK published as a pre-release. Before making the repository
+public:
+
+- The APK bundles the local servers from the integration project, including
+  rAthena (GPL-3.0). Publish their corresponding source, including local changes
+  on top of d4b8e7b, and link it from the release; or withdraw the APK.
+- Resolve the AzzyAI permission question above. companion_ai.json carries
+  AzzyAI-style settings inherited from upstream and should be checked with it.

@@ -12,9 +12,9 @@ client and local servers together for offline play.
 [![Based on nostalro-client](https://img.shields.io/badge/Based_on-nostalro--client-607D8B?style=flat)](https://github.com/nmeylan/nostalro-client)
 [![AI-assisted development](https://img.shields.io/badge/Development-AI--assisted-8E44AD?style=flat)](#ai-use-disclosure)
 
-**[Download APK](https://github.com/si-klyde/nostalre/releases)** · [Install](#play-on-android) · [Contribute](#contributing) · [Credits](#attribution) · [AI disclosure](#ai-use-disclosure)
+**[Download test APK](https://github.com/si-klyde/nostalre/releases)** · [Install](#play-on-android) · [Contribute](#contributing) · [Credits](#attribution) · [License](#license) · [AI disclosure](#ai-use-disclosure)
 
-![nostalRE gameplay on an Android handheld](docs/images/android-handheld.png)
+![nostalRE gameplay on an Android handheld](docs/images/android-handheld.webp)
 
 *User-provided photo of nostalRE running on an Android handheld. Game resources are supplied separately.*
 
@@ -25,6 +25,10 @@ client and local servers together for offline play.
 Open **[GitHub Releases](https://github.com/si-klyde/nostalre/releases)** and
 select the ARM64 `.apk` under a release's **Assets**. Read its notes for the
 build's status and known issues.
+
+> [!NOTE]
+> Current APKs are debug-signed **test builds** published as pre-releases.
+> Expect bugs and missing features, and back up your game folder.
 
 | You need | Requirement |
 | --- | --- |
@@ -184,19 +188,37 @@ Renewal protocol support, rendering, interface, input, and platform integration.
 | [winit](https://github.com/rust-windowing/winit) | Windowing and input, including the local Android modification; Apache-2.0, with W3C notices |
 | [Lua](https://www.lua.org/) — Lua.org / PUC-Rio | Lua 5.1 runtime; MIT |
 | Noto Project Authors / Adobe | Bundled fonts; SIL Open Font License |
-| [rAthena](https://github.com/rathena/rathena) — rAthena Development Team | Protocol and generated server datasets; source GPL notices retained |
+| [rAthena](https://github.com/rathena/rathena) — rAthena Development Team | Protocol and generated server datasets; GPL-3.0-or-later |
 | [AzzyAI](https://github.com/SpenceKonde/AzzyAI) — Dr. Azzy / Spence Konde | Design credit and tactic defaults inherited through nostalro-client |
 
 </details>
 
 See [LICENSE.md](LICENSE.md), [NOTICE](NOTICE), and [LICENSES](LICENSES) for
 license texts and component details. The [bundled-content review](docs/third-party-content.md)
-records remaining permission/license-scope questions for inherited tactic
-defaults and generated server datasets.
+records the remaining permission question for inherited tactic defaults.
 
 The repository also includes original charm artwork, OFL fonts, authored parser
 fixtures, vendored examples/test data, and the user-provided README photo.
 Game-specific compatibility tables and resource names remain in the source.
+
+## License
+
+nostalRE combines code under several licenses. Each part keeps its upstream terms:
+
+| Part | License |
+| --- | --- |
+| Client, libraries, and tools (default) | Apache-2.0 — [LICENSE.md](LICENSE.md) |
+| `rust-ro/` | MIT — [rust-ro/LICENSE.md](rust-ro/LICENSE.md) |
+| `vendor/winit/` | Apache-2.0 — [vendor/winit/LICENSE](vendor/winit/LICENSE), with [W3C notices](LICENSES/winit-W3C.txt) |
+| Korangar-derived RSM code | MIT — [LICENSES/korangar-MIT.txt](LICENSES/korangar-MIT.txt) |
+| Linked Lua 5.1 runtime | MIT — [LICENSES/lua-MIT.txt](LICENSES/lua-MIT.txt) |
+| Bundled Noto fonts | SIL OFL 1.1 — [OFL-LICENSE.txt](lib/renderer/src/fonts/OFL-LICENSE.txt) |
+| [rAthena-derived tables and packet data](docs/third-party-content.md#resolved-generated-rathena-datasets) (7 files) | GPL-3.0-or-later — [LICENSES/rathena-GPL-3.0.txt](LICENSES/rathena-GPL-3.0.txt) |
+
+The rAthena-derived tables are compiled into the client, so released binaries,
+including the APK, are distributed under GPL-3.0-or-later as a whole. The
+Apache-2.0, MIT, and OFL parts remain available under their own terms in source form.
+[NOTICE](NOTICE) lists attribution and modification details.
 
 ## AI use disclosure
 
