@@ -3,9 +3,13 @@ path	origin	disposition	evidence_or_next_action
 .gitignore	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 Cargo.lock	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 Cargo.toml	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-Development.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+Development.md	upstream baseline	removed	Two-line stub removed; F11 debug grid is documented in docs/internal/rendering.md.
 Features.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 LICENSE.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+LICENSES/korangar-MIT.txt	added for export	keep	Full Korangar MIT notice.
+LICENSES/lua-MIT.txt	added for export	keep	Full Lua 5.1 MIT notice.
+LICENSES/rathena-GPL-3.0.txt	added for export	keep	Full GPLv3 text for rAthena-derived files.
+LICENSES/winit-W3C.txt	added for export	keep	W3C notice from vendored winit keyboard definitions.
 NOTICE	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 README.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 client/Cargo.toml	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -77,8 +81,9 @@ client/src/ui/mod.rs	upstream baseline	keep	Retain source and attribution; origi
 client/src/ui/windows.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 companion_ai.json	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 config.sample.json	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-docs/TODO.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+docs/TODO.md	modified or added since baseline	removed	Internal checklist removed before publication.
 docs/configuration.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+docs/images/android-handheld.webp	added for export	keep	User-supplied README photo (2026-10-23); downscaled to WebP, metadata stripped.
 docs/internal/architecture.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 docs/internal/companion-ai.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 docs/internal/gr2-decoding.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -88,6 +93,10 @@ docs/internal/sprite-projection.md	upstream baseline	keep	Retain source and attr
 docs/internal/ui-system.md	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 docs/packet-status-20250716.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 docs/profiling.md	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+docs/provenance.tsv	added for export	keep	Export inventory.
+docs/rathena-inputs.tsv	added for export	keep	Fingerprints of rAthena generator inputs.
+docs/release-review.md	added for export	keep	Export preparation record.
+docs/third-party-content.md	added for export	keep	Bundled-content and attribution review.
 lib/ai/Cargo.toml	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/ai/src/config.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/ai/src/consts.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -105,6 +114,7 @@ lib/audio/src/manager.rs	upstream baseline	keep	Retain source and attribution; o
 lib/audio/src/mixer.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/audio/src/panning.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/effects/Cargo.toml	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+lib/effects/assets/README.md	added for export	keep	Records charm artwork as the user's own.
 lib/effects/assets/charm_earth.png	modified or added since baseline	keep	Source history b2ff3940/85fe908d records user-owned artwork; see lib/effects/assets/README.md.
 lib/effects/assets/charm_fire.png	modified or added since baseline	keep	Source history b2ff3940/85fe908d records user-owned artwork; see lib/effects/assets/README.md.
 lib/effects/assets/charm_water.png	modified or added since baseline	keep	Source history b2ff3940/85fe908d records user-owned artwork; see lib/effects/assets/README.md.
@@ -459,8 +469,8 @@ lib/game/src/guild.rs	modified or added since baseline	keep	Retain source and at
 lib/game/src/hotkey.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/inventory.rs	modified or added since baseline	keep	Retained per user decision; implementation/compatibility mappings alone are not treated as content-removal findings. See docs/third-party-content.md.
 lib/game/src/item.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-lib/game/src/item_tables.rs	modified or added since baseline	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
-lib/game/src/job_tables.rs	modified or added since baseline	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
+lib/game/src/item_tables.rs	modified or added since baseline	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
+lib/game/src/job_tables.rs	modified or added since baseline	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
 lib/game/src/keybinding.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/level_aura.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/lib.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -498,7 +508,7 @@ lib/game/src/skill.rs	modified or added since baseline	keep	Retained per user de
 lib/game/src/skill_action.rs	modified or added since baseline	keep	Retained per user decision; implementation/compatibility mappings alone are not treated as content-removal findings. See docs/third-party-content.md.
 lib/game/src/skill_msg.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/skill_tree.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-lib/game/src/skill_tree_tables.rs	modified or added since baseline	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
+lib/game/src/skill_tree_tables.rs	modified or added since baseline	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
 lib/game/src/sound/ambient.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/sound/bgm_table.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/src/sound/mod.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -517,8 +527,8 @@ lib/game/tests/equipment_properties.rs	modified or added since baseline	keep	Ret
 lib/game/tests/gr2_animation.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/game/tests/probe_sense.rs	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/network/Cargo.toml	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
-lib/network/data/rathena-20250716-layout.tsv	modified or added since baseline	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
-lib/network/data/rathena-20250716.tsv	modified or added since baseline	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
+lib/network/data/rathena-20250716-layout.tsv	modified or added since baseline	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
+lib/network/data/rathena-20250716.tsv	modified or added since baseline	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
 lib/network/examples/packet_status.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/network/examples/session_probe.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/network/examples/session_probe/play.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -565,6 +575,7 @@ lib/renderer/src/effect/scene.rs	modified or added since baseline	keep	Retain so
 lib/renderer/src/effect/str_pipeline.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/renderer/src/effect_sprite.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/renderer/src/font_atlas.rs	modified or added since baseline	keep	Retain source and attribution; origin classification does not establish clearance.
+lib/renderer/src/fonts/FONT-NOTICES.txt	added for export	keep	Copyright statements from bundled Noto font metadata.
 lib/renderer/src/fonts/NotoSans-Bold.ttf	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/renderer/src/fonts/NotoSans-Regular.ttf	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
 lib/renderer/src/fonts/NotoSansKR-Regular.otf	upstream baseline	keep	Retain source and attribution; origin classification does not establish clearance.
@@ -749,8 +760,9 @@ rust-ro/models/src/enums/bonus.rs	vendored rust-ro, possibly modified	keep	MIT b
 rust-ro/models/src/enums/cell.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/class.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/client_effect_icon.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
+rust-ro/models/src/enums/client_messages.rs	vendored rust-ro	removed	Unused 44,287-line client-message dump; module declaration removed.
 rust-ro/models/src/enums/effect.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
-rust-ro/models/src/enums/effect_id.rs	vendored rust-ro, possibly modified	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
+rust-ro/models/src/enums/effect_id.rs	vendored rust-ro, possibly modified	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
 rust-ro/models/src/enums/element.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/item.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/look.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
@@ -760,7 +772,7 @@ rust-ro/models/src/enums/mod.rs	vendored rust-ro, possibly modified	keep	MIT bas
 rust-ro/models/src/enums/size.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/skill.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/skill_client_icon.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
-rust-ro/models/src/enums/skill_enums.rs	vendored rust-ro, possibly modified	review	rAthena source attribution and GPL text supplied; confirm distribution-license scope for generated data (docs/third-party-content.md).
+rust-ro/models/src/enums/skill_enums.rs	vendored rust-ro, possibly modified	keep	rAthena-derived; inputs GPL-3.0-or-later (confirmed 2026-10-24); distributed under GPL-3.0-or-later (docs/third-party-content.md).
 rust-ro/models/src/enums/status.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/trigger.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
 rust-ro/models/src/enums/unit.rs	vendored rust-ro, possibly modified	keep	MIT baseline in NOTICE; retain rust-ro/LICENSE.md.
@@ -1058,4 +1070,3 @@ vendor/winit/src/window.rs	vendored winit	keep	Apache-2.0; retain vendor/winit/L
 vendor/winit/tests/send_objects.rs	vendored winit	keep	Apache-2.0; retain vendor/winit/LICENSE and modification notice.
 vendor/winit/tests/serde_objects.rs	vendored winit	keep	Apache-2.0; retain vendor/winit/LICENSE and modification notice.
 vendor/winit/tests/sync_object.rs	vendored winit	keep	Apache-2.0; retain vendor/winit/LICENSE and modification notice.
-rust-ro/models/src/enums/client_messages.rs	vendored rust-ro	removed	Unused 44,287-line client-message dump; module declaration removed.

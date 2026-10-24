@@ -9,7 +9,7 @@ lookup implementations were changed during this review.
 | Content | Result |
 | --- | --- |
 | Game archives, official client executables, music | None in the source export; local game data/config/builds remain ignored. |
-| README demonstration photo | User supplied on 2026-10-23; copied unchanged to docs/images/android-handheld.png for documentation. |
+| README demonstration photo | User supplied on 2026-10-23; downscaled to docs/images/android-handheld.webp with metadata stripped, for documentation. |
 | Seventeen compiled Lua fixtures | Table contents match the included authored Lua sources, using the client's parser with the required seed tables. |
 | Six generated text fixtures | Match make_fixtures.py output exactly, including synthetic TEST entries. |
 | Three Noto fonts | Byte-for-byte copies of upstream baseline b4ec4a4; embedded copyright statements transcribed into FONT-NOTICES.txt, alongside the existing OFL text. |
@@ -32,10 +32,10 @@ record in compiled chunks is byte-identical to a newly compiled file.
 - Incorporated Korangar code and linked Lua: full MIT notices.
 - Fonts: OFL text plus copyright statements from the actual bundled metadata.
 - AzzyAI: restored the inherited credit and documented the permission question below.
-- rAthena-derived output: source credit, version evidence, and full GPLv3 text
-  provided for reference; the output's distribution-license scope remains below.
+- rAthena-derived output: source credit, version evidence, and full GPLv3 text;
+  distributed under GPL-3.0-or-later (below).
 
-## Two specific questions remain
+## Open question
 
 ### AzzyAI-derived tactic defaults
 
@@ -56,7 +56,7 @@ Next step: establish applicable permission for the inherited defaults, or
 replace those defaults with independently chosen settings if permission is unavailable.
 The implementation and defaults remain unchanged.
 
-### Generated rAthena datasets
+## Resolved: generated rAthena datasets
 
 Files:
 
@@ -75,15 +75,18 @@ upstream d4b8e7b plus local server changes. Input fingerprints are recorded in
 [rathena-inputs.tsv](rathena-inputs.tsv); the list covers the named primary
 inputs, rather than every transitive compiler include.
 
-rAthena's database headers specify GPL-3.0-or-later; its source headers identify
-GNU GPL terms. Full GPLv3 text is supplied in LICENSES/rathena-GPL-3.0.txt.
-The client's inherited Apache license does not by itself answer what terms
-apply to imported/generated input content. Conversely, generation from a GPL
-program alone does not establish that all output is GPL-covered. The concrete
-question is whether these datasets carry protected input content and, if so,
-the appropriate distribution terms/source provisions for the combined release.
-No blanket relicensing was performed. Attribution and a license copy do not
-settle that scope question. The datasets and implementations remain unchanged.
+Confirmed 2026-10-24 against the integration's rAthena checkout: its LICENSE
+is GNU GPL version 3, the database headers grant GPL-3.0-or-later, and the source
+headers state "Licensed under GNU GPL" with reference to that LICENSE. The local
+input hashes match [rathena-inputs.tsv](rathena-inputs.tsv). Full GPLv3 text is
+supplied in LICENSES/rathena-GPL-3.0.txt.
+
+Decision: the seven files above are treated as carrying rAthena content and are
+distributed under GPL-3.0-or-later. Because they compile into the client, released
+binaries (including the APK) are distributed under GPL-3.0-or-later as a whole;
+Apache-2.0 and MIT code is compatible with GPLv3 in that direction. The rest of
+the source keeps its own license. This repository supplies the corresponding
+client source. The datasets and implementations remain unchanged.
 
 References: [GNU output FAQ](https://www.gnu.org/licenses/gpl-faq.html#GPLOutput),
 [OFL conditions](https://openfontlicense.org/open-font-license-official-text/).

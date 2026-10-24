@@ -10,6 +10,8 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
+  # Full debug info for every target fills the runner disk.
+  CARGO_PROFILE_DEV_DEBUG: 0
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -41,9 +43,6 @@ jobs:
           # just evicts main's copy from the repo-wide 10 GB budget.
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
-
-      - name: Resolve dependencies
-        run: cargo generate-lockfile
 
       - name: Build
         run: cargo build --workspace --all-targets --locked

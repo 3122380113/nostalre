@@ -43,7 +43,8 @@ docs/third-party-content.md.
 The generated job/item/skill/effect tables and network layout TSVs derive from
 rAthena source/data by the rAthena Development Team, https://github.com/rathena/rathena.
 The integration source records upstream baseline d4b8e7b plus local changes.
-Source headers identify GNU GPL terms; database headers specify version 3 or
-later. LICENSES/rathena-GPL-3.0.txt supplies the full version 3 text.
-docs/third-party-content.md identifies the files and the remaining question
-about distribution-license scope for the generated output.
+rAthena is licensed under GNU GPL version 3; its database headers specify
+version 3 or later. These files are distributed under GPL-3.0-or-later, and
+released binaries that compile them in are distributed under GPL-3.0-or-later
+as a whole. LICENSES/rathena-GPL-3.0.txt supplies the full version 3 text.
+docs/third-party-content.md lists the files.
