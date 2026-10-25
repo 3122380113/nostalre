@@ -13,6 +13,21 @@ const NO_DAMAGE_SKILL_EXEC_SECS: f32 = 0.6;
 /// How far an NPC answers from: rAthena's `area_size` (14) and one, each way
 pub const TALK_RANGE: u16 = 15;
 
+/// How many cells nearer a monster counts for a pad's lock (`best_monster`) when it is hitting the player, or
+/// coming for it
+pub struct LockBonus {
+    pub hitting: u16,
+    pub targeting: u16,
+}
+
+pub const LOCK_BONUS: LockBonus = LockBonus {
+    hitting: 12,
+    targeting: 8,
+};
+
+/// A monster walking to a cell this close to the player is taken to be coming for it
+const LOCK_CHASE_CELLS: u16 = 2;
+
 pub struct EntityCollection {
     entities: HashMap<u32, Entity>,
     player_id: Option<u32>,
@@ -128,15 +143,38 @@ impl EntityCollection {
             .is_some_and(|e| lockable_monster(e) && cell_distance(e, from) <= reach)
     }
 
-    /// The monster a pad's lock goes to when it holds none: the nearest one `monster_in_reach` accepts. Ties go
-    /// to the lower id, so the pick holds from frame to frame
-    pub fn nearest_monster(&self, from: (u16, u16), reach: u16) -> Option<u32> {
+    /// The monster a pad's lock goes to when it holds none, among those `monster_in_reach` accepts: the nearest,
+    /// one hitting the player or coming for it counting as that many cells nearer (`LOCK_BONUS`). Ties go to the
+    /// lower id, so the pick holds from frame to frame
+    pub fn best_monster(&self, from: (u16, u16), reach: u16) -> Option<u32> {
         self.iter()
             .filter(|e| lockable_monster(e))
-            .map(|e| (cell_distance(e, from), e.id))
+            .map(|e| (cell_distance(e, from), e))
             .filter(|&(distance, _)| distance <= reach)
+            .map(|(distance, e)| (distance as i32 - self.threat_bonus(e, from) as i32, e.id))
             .min()
             .map(|(_, id)| id)
+    }
+
+    /// `LOCK_BONUS` for what `e` is doing to the player standing on `from`. The server never says whom a monster
+    /// chases, so "coming for it" is read off a cast aimed at the player or a walk ending next to it.
+    fn threat_bonus(&self, e: &Entity, from: (u16, u16)) -> u16 {
+        let Some(me) = self.player_id else {
+            return 0;
+        };
+        if e.target_gid == Some(me) {
+            return LOCK_BONUS.hitting;
+        }
+        let casting_at_me = e.state() == EntityState::Casting && e.cast_target_gid == Some(me);
+        let walking_to_me = e.movement.is_moving()
+            && e.movement.destination().is_some_and(|(x, y)| {
+                x.abs_diff(from.0).max(y.abs_diff(from.1)) <= LOCK_CHASE_CELLS
+            });
+        if casting_at_me || walking_to_me {
+            LOCK_BONUS.targeting
+        } else {
+            0
+        }
     }
 
     pub fn clear(&mut self) {
@@ -484,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn nearest_monster_skips_pets_the_dead_and_far_ones() {
+    fn best_monster_skips_pets_the_dead_and_far_ones() {
         let mut entities = EntityCollection::new();
         let mut pet = monster_at(1, 100, 101);
         pet.is_pet = true;
@@ -496,11 +534,11 @@ mod tests {
         entities.insert(monster_at(4, 103, 98));
         entities.insert(monster_at(5, 130, 100));
 
-        assert_eq!(entities.nearest_monster((100, 100), 20), Some(4));
-        assert_eq!(entities.nearest_monster((100, 100), 2), None, "4 is 3 cells off");
+        assert_eq!(entities.best_monster((100, 100), 20), Some(4));
+        assert_eq!(entities.best_monster((100, 100), 2), None, "4 is 3 cells off");
         entities.insert(monster_at(6, 97, 102));
         assert_eq!(
-            entities.nearest_monster((100, 100), 20),
+            entities.best_monster((100, 100), 20),
             Some(4),
             "a tie goes to the lower id"
         );
@@ -510,6 +548,35 @@ mod tests {
         assert!(!entities.monster_in_reach(1, (100, 100), 20), "a pet holds no lock");
         assert!(!entities.monster_in_reach(2, (100, 100), 20), "nor the dead");
         assert!(!entities.monster_in_reach(99, (100, 100), 20), "nor one gone");
+    }
+
+    #[test]
+    fn best_monster_prefers_one_hitting_or_casting_at_the_player() {
+        let mut entities = EntityCollection::new();
+        entities.insert(make_entity(9));
+        entities.set_player_id(9);
+        entities.insert(monster_at(1, 101, 100));
+        let mut hitter = monster_at(2, 109, 100);
+        hitter.target_gid = Some(9);
+        entities.insert(hitter);
+        let mut caster = monster_at(3, 106, 100);
+        caster.set_state(EntityState::Casting);
+        caster.cast_target_gid = Some(9);
+        entities.insert(caster);
+
+        assert_eq!(
+            entities.best_monster((100, 100), 20),
+            Some(2),
+            "9 cells off but hitting (9 - 12), ahead of the caster (6 - 8) and the idle one (1)"
+        );
+        entities.get_mut(2).unwrap().target_gid = Some(1234);
+        assert_eq!(
+            entities.best_monster((100, 100), 20),
+            Some(3),
+            "hitting someone else counts for nothing"
+        );
+        entities.get_mut(3).unwrap().set_state(EntityState::Standing);
+        assert_eq!(entities.best_monster((100, 100), 20), Some(1), "the cast is over");
     }
 
     fn make_entity(id: u32) -> Entity {
