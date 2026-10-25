@@ -370,6 +370,7 @@ impl App {
                     self.gamepad.set = (self.gamepad.set + PAD_SETS - 1) % PAD_SETS;
                 }
                 Button::R1 if playing => self.gamepad.set = (self.gamepad.set + 1) % PAD_SETS,
+                Button::X if playing => self.toggle_priority_monster(),
                 _ => {}
             }
             return;
@@ -699,7 +700,7 @@ impl App {
         let from = player.movement.cell_position();
         let lock = self
             .locked_monster()
-            .or_else(|| entities.best_monster(from, REACH_CELLS as u16));
+            .or_else(|| entities.best_monster(from, REACH_CELLS as u16, self.priority_monsters()));
         if lock != self.game.combat.locked_target {
             self.log_lock(lock, "X");
         }
@@ -707,6 +708,46 @@ impl App {
         if let Some(id) = lock {
             self.initiate_attack(id);
         }
+    }
+
+    /// The monster classes the lock prefers on this map (`AimConfig::priority_monsters`)
+    fn priority_monsters(&self) -> &[u16] {
+        self.game
+            .session
+            .current_map
+            .as_ref()
+            .and_then(|map| self.config.aim.priority_monsters.get(map))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Select+X: the locked monster's class becomes one the lock prefers on this map, or stops being one
+    fn toggle_priority_monster(&mut self) {
+        let Some(map) = self.game.session.current_map.clone() else {
+            return;
+        };
+        let Some(e) = self.locked_monster().and_then(|id| self.game.world.entities.get(id)) else {
+            self.windows
+                .chat_window
+                .add_system("Lock a monster with X first, then Select+X to prefer its kind here".to_string());
+            return;
+        };
+        let (class, name) = (e.job, e.name.clone().unwrap_or_else(|| format!("#{}", e.job)));
+        let classes = self.config.aim.priority_monsters.entry(map.clone()).or_default();
+        let preferred = if let Some(i) = classes.iter().position(|&c| c == class) {
+            classes.remove(i);
+            false
+        } else {
+            classes.push(class);
+            true
+        };
+        if classes.is_empty() {
+            self.config.aim.priority_monsters.remove(&map);
+        }
+        self.save_config_soon();
+        let status = if preferred { "preferred" } else { "no longer preferred" };
+        self.windows
+            .chat_window
+            .add_system(format!("{name}: {status} on {map}"));
     }
 
     /// A new lock, at debug level (RUST_LOG=nostalre_client::input::gamepad=debug): for tuning `LOCK_BONUS`
@@ -752,7 +793,7 @@ impl App {
             return;
         }
         let from = player.movement.cell_position();
-        if let Some(next) = entities.best_monster(from, RELOCK_CELLS) {
+        if let Some(next) = entities.best_monster(from, RELOCK_CELLS, self.priority_monsters()) {
             self.log_lock(Some(next), "after a kill");
             self.game.combat.locked_target = Some(next);
             self.gamepad.relock_pending = true;

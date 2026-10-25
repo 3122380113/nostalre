@@ -13,16 +13,20 @@ const NO_DAMAGE_SKILL_EXEC_SECS: f32 = 0.6;
 /// How far an NPC answers from: rAthena's `area_size` (14) and one, each way
 pub const TALK_RANGE: u16 = 15;
 
-/// How many cells nearer a monster counts for a pad's lock (`best_monster`) when it is hitting the player, or
-/// coming for it
+/// How many cells nearer a monster counts for a pad's lock (`best_monster`): the player's priority type on the
+/// map, hitting the player, coming for it, attacking from afar. They add up.
 pub struct LockBonus {
+    pub priority: u16,
     pub hitting: u16,
     pub targeting: u16,
+    pub ranged: u16,
 }
 
 pub const LOCK_BONUS: LockBonus = LockBonus {
+    priority: 16,
     hitting: 12,
     targeting: 8,
+    ranged: 6,
 };
 
 /// A monster walking to a cell this close to the player is taken to be coming for it
@@ -144,14 +148,24 @@ impl EntityCollection {
     }
 
     /// The monster a pad's lock goes to when it holds none, among those `monster_in_reach` accepts: the nearest,
-    /// one hitting the player or coming for it counting as that many cells nearer (`LOCK_BONUS`). Ties go to the
-    /// lower id, so the pick holds from frame to frame
-    pub fn best_monster(&self, from: (u16, u16), reach: u16) -> Option<u32> {
+    /// counting the `LOCK_BONUS`es as cells nearer: a class in `priority` (the player's picks for this map), one
+    /// hitting the player or coming for it, one that attacks from afar. Ties go to the lower id, so the pick
+    /// holds from frame to frame
+    pub fn best_monster(&self, from: (u16, u16), reach: u16, priority: &[u16]) -> Option<u32> {
         self.iter()
             .filter(|e| lockable_monster(e))
             .map(|e| (cell_distance(e, from), e))
             .filter(|&(distance, _)| distance <= reach)
-            .map(|(distance, e)| (distance as i32 - self.threat_bonus(e, from) as i32, e.id))
+            .map(|(distance, e)| {
+                let mut bonus = self.threat_bonus(e, from);
+                if priority.contains(&e.job) {
+                    bonus += LOCK_BONUS.priority;
+                }
+                if crate::mob_tables::ranged_attack_range(e.job).is_some() {
+                    bonus += LOCK_BONUS.ranged;
+                }
+                (distance as i32 - bonus as i32, e.id)
+            })
             .min()
             .map(|(_, id)| id)
     }
@@ -534,11 +548,11 @@ mod tests {
         entities.insert(monster_at(4, 103, 98));
         entities.insert(monster_at(5, 130, 100));
 
-        assert_eq!(entities.best_monster((100, 100), 20), Some(4));
-        assert_eq!(entities.best_monster((100, 100), 2), None, "4 is 3 cells off");
+        assert_eq!(entities.best_monster((100, 100), 20, &[]), Some(4));
+        assert_eq!(entities.best_monster((100, 100), 2, &[]), None, "4 is 3 cells off");
         entities.insert(monster_at(6, 97, 102));
         assert_eq!(
-            entities.best_monster((100, 100), 20),
+            entities.best_monster((100, 100), 20, &[]),
             Some(4),
             "a tie goes to the lower id"
         );
@@ -565,18 +579,43 @@ mod tests {
         entities.insert(caster);
 
         assert_eq!(
-            entities.best_monster((100, 100), 20),
+            entities.best_monster((100, 100), 20, &[]),
             Some(2),
             "9 cells off but hitting (9 - 12), ahead of the caster (6 - 8) and the idle one (1)"
         );
         entities.get_mut(2).unwrap().target_gid = Some(1234);
         assert_eq!(
-            entities.best_monster((100, 100), 20),
+            entities.best_monster((100, 100), 20, &[]),
             Some(3),
             "hitting someone else counts for nothing"
         );
         entities.get_mut(3).unwrap().set_state(EntityState::Standing);
-        assert_eq!(entities.best_monster((100, 100), 20), Some(1), "the cast is over");
+        assert_eq!(entities.best_monster((100, 100), 20, &[]), Some(1), "the cast is over");
+    }
+
+    #[test]
+    fn best_monster_counts_priority_types_and_ranged_monsters() {
+        let mut entities = EntityCollection::new();
+        entities.insert(monster_at(1, 101, 100));
+        let mut archer = monster_at(2, 106, 100);
+        archer.job = 1016; // Archer Skeleton, attack range 9
+        entities.insert(archer);
+        assert_eq!(crate::mob_tables::ranged_attack_range(1016), Some(9));
+        assert_eq!(crate::mob_tables::ranged_attack_range(1002), None, "a Poring hits from next to you");
+
+        assert_eq!(
+            entities.best_monster((100, 100), 20, &[]),
+            Some(2),
+            "6 cells off but ranged (6 - 6), ahead of the Poring a cell off"
+        );
+        let mut far = monster_at(3, 115, 100);
+        far.job = 1031;
+        entities.insert(far);
+        assert_eq!(
+            entities.best_monster((100, 100), 20, &[1031]),
+            Some(3),
+            "15 cells off, but the player's priority type here (15 - 16)"
+        );
     }
 
     fn make_entity(id: u32) -> Entity {
