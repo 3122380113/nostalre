@@ -20,7 +20,6 @@ use winit::window::WindowId;
 
 use crate::App;
 use nostalre_game::app_state::AppState;
-use nostalre_game::entity::EntityType;
 use nostalre_game::entity_collection::TALK_RANGE;
 use nostalre_game::hotkey::{PAD_SET_SLOTS, PAD_SETS};
 use nostalre_renderer::camera::CameraControl;
@@ -170,10 +169,12 @@ pub(crate) struct Gamepad {
 }
 
 impl Gamepad {
-    /// A controller button: noted for the next frame. False for anything else (keyboards keep their keys).
+    /// A controller button: noted for the next frame. False for anything else (keyboards keep their keys), but
+    /// Tab, which is X on a keyboard: the lock's attack, also where no pad is read (the desktop).
     pub(crate) fn key(&mut self, event: &KeyEvent) -> bool {
         let button = match (&event.logical_key, event.physical_key) {
             (Key::Unidentified(NativeKey::Android(code)), _) => Button::from_android(*code),
+            (_, PhysicalKey::Code(KeyCode::Tab)) => Some(Button::X),
             (_, PhysicalKey::Code(code)) => self.arrow(code, event.state),
             _ => None,
         };
@@ -227,6 +228,12 @@ impl Gamepad {
             }
             _ => {}
         }
+    }
+
+    /// A press and its release, both seen next frame: a scripted button (`pad` in client/src/script.rs)
+    pub(crate) fn tap(&mut self, button: Button) {
+        self.press(button);
+        self.release(button);
     }
 
     fn press(&mut self, button: Button) {
@@ -400,7 +407,7 @@ impl App {
                 MouseButton::Right,
                 ElementState::Pressed,
             ),
-            Button::X if in_game => self.attack_closest_monster(),
+            Button::X if in_game => self.attack_locked_monster(),
             Button::Y if in_game => {
                 if !self.pick_up_closest_item() {
                     self.talk_to_nearest_npc();
@@ -538,7 +545,7 @@ impl App {
         self.windows.hud.input.touch_slots.talk = talk;
         let touch = self.windows.hud.touch_input();
         if touch.attack {
-            self.attack_closest_monster();
+            self.attack_locked_monster();
         }
         if touch.talk {
             self.talk_to_nearest_npc();
@@ -665,22 +672,29 @@ impl App {
         }
     }
 
-    fn attack_closest_monster(&mut self) {
-        let Some(player) = self.game.world.entities.player() else {
+    /// The pad's locked monster while it can still be held (alive, in reach): what X attacks and the overlay
+    /// marks
+    pub(crate) fn locked_monster(&self) -> Option<u32> {
+        let entities = &self.game.world.entities;
+        let from = entities.player()?.movement.cell_position();
+        self.game
+            .combat
+            .locked_target
+            .filter(|&id| entities.monster_in_reach(id, from, REACH_CELLS as u16))
+    }
+
+    /// X: the locked monster, or else a new lock on the nearest one, attacked
+    fn attack_locked_monster(&mut self) {
+        let entities = &self.game.world.entities;
+        let Some(player) = entities.player() else {
             return;
         };
-        let (px, py) = player.movement.cell_position();
-        let closest = self
-            .game
-            .world
-            .entities
-            .iter()
-            .filter(|e| e.entity_type == EntityType::Monster && !e.is_pet && e.is_alive())
-            .map(|e| (e.id, cell_distance((px, py), e.movement.cell_position())))
-            .filter(|&(_, d)| d <= REACH_CELLS)
-            .min_by_key(|&(_, d)| d)
-            .map(|(id, _)| id);
-        if let Some(id) = closest {
+        let from = player.movement.cell_position();
+        let lock = self
+            .locked_monster()
+            .or_else(|| entities.nearest_monster(from, REACH_CELLS as u16));
+        self.game.combat.locked_target = lock;
+        if let Some(id) = lock {
             self.initiate_attack(id);
         }
     }

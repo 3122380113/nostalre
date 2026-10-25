@@ -122,6 +122,23 @@ impl EntityCollection {
             .map(|(_, e)| e)
     }
 
+    /// A monster a pad's lock can hold: alive, not someone's pet, within `reach` cells each way of `from`
+    pub fn monster_in_reach(&self, id: u32, from: (u16, u16), reach: u16) -> bool {
+        self.get(id)
+            .is_some_and(|e| lockable_monster(e) && cell_distance(e, from) <= reach)
+    }
+
+    /// The monster a pad's lock goes to when it holds none: the nearest one `monster_in_reach` accepts. Ties go
+    /// to the lower id, so the pick holds from frame to frame
+    pub fn nearest_monster(&self, from: (u16, u16), reach: u16) -> Option<u32> {
+        self.iter()
+            .filter(|e| lockable_monster(e))
+            .map(|e| (cell_distance(e, from), e.id))
+            .filter(|&(distance, _)| distance <= reach)
+            .min()
+            .map(|(_, id)| id)
+    }
+
     pub fn clear(&mut self) {
         self.entities.clear();
         self.account_to_key.clear();
@@ -392,6 +409,16 @@ impl EntityCollection {
     }
 }
 
+fn lockable_monster(e: &Entity) -> bool {
+    e.entity_type == EntityType::Monster && !e.is_pet && e.is_alive()
+}
+
+/// Cells each way from `from` to `e`: Chebyshev, how RO measures range
+fn cell_distance(e: &Entity, from: (u16, u16)) -> u16 {
+    let (x, y) = e.movement.cell_position();
+    x.abs_diff(from.0).max(y.abs_diff(from.1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,6 +475,41 @@ mod tests {
 
         entities.insert(npc_at(5, 86, 102, 97));
         assert_eq!(pick(&entities, 15), Some(3), "a tie goes to the lower id");
+    }
+
+    fn monster_at(id: u32, x: u16, y: u16) -> Entity {
+        let mut e = npc_at(id, 1002, x, y);
+        e.entity_type = EntityType::Monster;
+        e
+    }
+
+    #[test]
+    fn nearest_monster_skips_pets_the_dead_and_far_ones() {
+        let mut entities = EntityCollection::new();
+        let mut pet = monster_at(1, 100, 101);
+        pet.is_pet = true;
+        entities.insert(pet);
+        let mut dead = monster_at(2, 101, 100);
+        dead.set_state(EntityState::Dead);
+        entities.insert(dead);
+        entities.insert(npc_at(3, 86, 99, 99));
+        entities.insert(monster_at(4, 103, 98));
+        entities.insert(monster_at(5, 130, 100));
+
+        assert_eq!(entities.nearest_monster((100, 100), 20), Some(4));
+        assert_eq!(entities.nearest_monster((100, 100), 2), None, "4 is 3 cells off");
+        entities.insert(monster_at(6, 97, 102));
+        assert_eq!(
+            entities.nearest_monster((100, 100), 20),
+            Some(4),
+            "a tie goes to the lower id"
+        );
+
+        assert!(entities.monster_in_reach(4, (100, 100), 3));
+        assert!(!entities.monster_in_reach(4, (100, 100), 2));
+        assert!(!entities.monster_in_reach(1, (100, 100), 20), "a pet holds no lock");
+        assert!(!entities.monster_in_reach(2, (100, 100), 20), "nor the dead");
+        assert!(!entities.monster_in_reach(99, (100, 100), 20), "nor one gone");
     }
 
     fn make_entity(id: u32) -> Entity {
