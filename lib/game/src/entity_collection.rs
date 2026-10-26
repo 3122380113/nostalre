@@ -152,7 +152,13 @@ impl EntityCollection {
     /// hitting the player or coming for it, one that attacks from afar. Ties go to the lower id, so the pick
     /// holds from frame to frame
     pub fn best_monster(&self, from: (u16, u16), reach: u16, priority: &[u16]) -> Option<u32> {
-        self.iter()
+        self.ranked_monsters(from, reach, priority).first().copied()
+    }
+
+    /// Every monster `best_monster` could pick, best first: what an aim-only X steps through
+    pub fn ranked_monsters(&self, from: (u16, u16), reach: u16, priority: &[u16]) -> Vec<u32> {
+        let mut ranked: Vec<(i32, u32)> = self
+            .iter()
             .filter(|e| lockable_monster(e))
             .map(|e| (cell_distance(e, from), e))
             .filter(|&(distance, _)| distance <= reach)
@@ -166,8 +172,9 @@ impl EntityCollection {
                 }
                 (distance as i32 - bonus as i32, e.id)
             })
-            .min()
-            .map(|(_, id)| id)
+            .collect();
+        ranked.sort_unstable();
+        ranked.into_iter().map(|(_, id)| id).collect()
     }
 
     /// `LOCK_BONUS` for what `e` is doing to the player standing on `from`. The server never says whom a monster
@@ -556,6 +563,7 @@ mod tests {
             Some(4),
             "a tie goes to the lower id"
         );
+        assert_eq!(entities.ranked_monsters((100, 100), 20, &[]), vec![4, 6], "best first, then the next");
 
         assert!(entities.monster_in_reach(4, (100, 100), 3));
         assert!(!entities.monster_in_reach(4, (100, 100), 2));

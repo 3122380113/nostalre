@@ -1,5 +1,6 @@
 //! Game controllers, after roBrowser's JoystickUI: left stick walks, right stick moves the cursor, A/B are the
-//! mouse buttons, X attacks the closest monster, Y picks up the closest item or else talks to the nearest NPC (in
+//! mouse buttons, X locks the best monster in reach and attacks it (with Settings → Gameplay → "X attacks" off
+//! it only aims: again the next, and the hotbar's attack and ground skills cast on the lock), Y picks up the closest item or else talks to the nearest NPC (in
 //! a dialog A goes on and B cancels; in a shop A moves a line across, Start buys). L1, R1 or both held with a face
 //! button use a hotbar slot, in one of three sets (Select+L1/R1). The camera is ours (the design canvas,
 //! "Camera on controller and touch"): L2/R2 turn it, with Select held they tilt it, Select+Up/Down zooms, R3
@@ -415,7 +416,8 @@ impl App {
                 MouseButton::Right,
                 ElementState::Pressed,
             ),
-            Button::X if in_game => self.attack_locked_monster(),
+            Button::X if in_game && self.config.aim.x_attacks => self.attack_locked_monster(),
+            Button::X if in_game => self.aim_next_monster(),
             Button::Y if in_game => {
                 if !self.pick_up_closest_item() {
                     self.talk_to_nearest_npc();
@@ -710,6 +712,25 @@ impl App {
         }
     }
 
+    /// X with "X attacks" off: aim, never attack (skills cast on the lock, events/skill.rs). With no lock the
+    /// best monster in reach (`ranked_monsters`) is locked, with one the next after it, round the list
+    fn aim_next_monster(&mut self) {
+        let entities = &self.game.world.entities;
+        let Some(player) = entities.player() else {
+            return;
+        };
+        let from = player.movement.cell_position();
+        let ranked = entities.ranked_monsters(from, REACH_CELLS as u16, self.priority_monsters());
+        let next = match self.locked_monster().and_then(|id| ranked.iter().position(|&r| r == id)) {
+            Some(i) => ranked.get((i + 1) % ranked.len()).copied(),
+            None => ranked.first().copied(),
+        };
+        if next != self.game.combat.locked_target {
+            self.log_lock(next, "X");
+        }
+        self.game.combat.locked_target = next;
+    }
+
     /// The monster classes the lock prefers on this map (`AimConfig::priority_monsters`)
     fn priority_monsters(&self) -> &[u16] {
         self.game
@@ -769,7 +790,8 @@ impl App {
 
     /// Each frame: a lock that can no longer be held is dropped, and when it was the monster we were attacking
     /// and it died, the best one within `RELOCK_CELLS` is locked and attacked, as another X would, as soon as
-    /// the character may act (`relock_pending`). One that walked out of reach or out of sight is only dropped.
+    /// the character may act (`relock_pending`). With "X attacks" off, whoever killed it, the new lock is only
+    /// aimed. One that walked out of reach or out of sight is only dropped.
     fn relock_after_kill(&mut self) {
         let Some(id) = self.game.combat.locked_target else {
             self.gamepad.relock_pending = false;
@@ -784,8 +806,9 @@ impl App {
         self.game.combat.locked_target = None;
         self.gamepad.relock_pending = false;
         let entities = &self.game.world.entities;
+        let attacks = self.config.aim.x_attacks;
         let killed = entities.get(id).is_some_and(|e| !e.is_alive())
-            && self.game.combat.last_attacked_enemy == Some(id);
+            && (!attacks || self.game.combat.last_attacked_enemy == Some(id));
         let Some(player) = entities.player().filter(|p| p.is_alive()) else {
             return;
         };
@@ -796,8 +819,10 @@ impl App {
         if let Some(next) = entities.best_monster(from, RELOCK_CELLS, self.priority_monsters()) {
             self.log_lock(Some(next), "after a kill");
             self.game.combat.locked_target = Some(next);
-            self.gamepad.relock_pending = true;
-            self.attack_relocked(next);
+            if attacks {
+                self.gamepad.relock_pending = true;
+                self.attack_relocked(next);
+            }
         }
     }
 
